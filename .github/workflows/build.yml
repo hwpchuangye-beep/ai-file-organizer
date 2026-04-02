@@ -24,12 +24,15 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '20'
-        cache: 'npm'
+        # 不使用 cache，因为没有 lock 文件
         
+    - name: Generate lock file
+      run: npm install --package-lock-only --legacy-peer-deps
+      
     - name: Install dependencies
       run: |
         npm config set registry https://registry.npmmirror.com/
-        npm install --legacy-peer-deps
+        npm ci --legacy-peer-deps || npm install --legacy-peer-deps
       
     - name: Type check
       run: npx tsc --noEmit
