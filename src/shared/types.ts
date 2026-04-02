@@ -44,6 +44,8 @@ export interface OrganizationScheme {
   uncertainItems: UncertainItem[]
   previewTree: DirectoryNode
   source?: 'model' | 'fallback'
+  confidence?: 'very-high' | 'high' | 'medium' | 'low'
+  confidenceValue?: number
 }
 
 export interface PlannedMove {
