@@ -49,11 +49,12 @@ export default function HomePage() {
     return () => clearInterval(interval);
   }, []);
 
-  useEffect(() => {
-    if (!modelConfig && apiReady) {
-      navigate('/model-config')
-    }
-  }, [modelConfig, navigate, apiReady])
+  // 暂时禁用自动跳转，先确保首页能显示
+  // useEffect(() => {
+  //   if (!modelConfig && apiReady) {
+  //     navigate('/model-config')
+  //   }
+  // }, [modelConfig, navigate, apiReady])
 
   const handleCheckDesktop = async () => {
     if (!window.electronAPI) return
