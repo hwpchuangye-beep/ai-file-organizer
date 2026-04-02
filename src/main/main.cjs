@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 const os = require('os');
@@ -112,6 +112,26 @@ ipcMain.handle('get-task-history', async () => {
 // 撤销最近任务
 ipcMain.handle('rollback-latest-task', async () => {
   return await executionService.rollbackLatestTask();
+});
+
+// 在 Finder 中显示文件
+ipcMain.handle('show-in-folder', async (_, filePath) => {
+  try {
+    await shell.showItemInFolder(filePath);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// 打开文件夹
+ipcMain.handle('open-folder', async (_, folderPath) => {
+  try {
+    await shell.openPath(folderPath);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 });
 
 // ========== Helper Functions ==========

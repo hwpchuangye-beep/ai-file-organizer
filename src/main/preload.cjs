@@ -7,6 +7,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDownloadsPath: () => ipcRenderer.invoke('get-downloads-path'),
   scanDirectory: (path) => ipcRenderer.invoke('scan-directory', path),
   
+  // 文件定位
+  showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
+  openFolder: (folderPath) => ipcRenderer.invoke('open-folder', folderPath),
+  
   // 模型服务
   testModelConnection: (config) => ipcRenderer.invoke('test-model-connection', config),
   getModels: (config) => ipcRenderer.invoke('get-models', config),
