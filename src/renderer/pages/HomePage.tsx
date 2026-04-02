@@ -507,7 +507,7 @@ export default function HomePage() {
                     >
                       {isRepairing ? (
                         <>
-                          <RefreshCw size={16} className="spin" />
+                          <RefreshCw size={16} spin={true} />
                           修复中...
                         </>
                       ) : (
