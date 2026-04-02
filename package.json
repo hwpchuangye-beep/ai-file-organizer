@@ -5,7 +5,7 @@
   "main": "dist/main/main.cjs",
   "scripts": {
     "dev:vite": "vite",
-    "dev:electron": "npm run build:main && wait-on http://127.0.0.1:5173 && VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
+    "dev:electron": "wait-on http://127.0.0.1:5173 && VITE_DEV_SERVER_URL=http://127.0.0.1:5173 ELECTRON_DEV_MODE=1 electron src/main/main.cjs",
     "dev": "concurrently -k -n VITE,ELECTRON -c cyan,magenta \"npm run dev:vite\" \"npm run dev:electron\"",
     "build": "vite build",
     "build:main": "mkdir -p dist/main/services && cp src/main/*.cjs dist/main/ && cp src/main/services/*.cjs dist/main/services/ && echo 'Main build complete' && ls -la dist/main/ && ls -la dist/main/services/",

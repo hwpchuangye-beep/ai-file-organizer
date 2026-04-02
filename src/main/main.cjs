@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
-const fs = require('fs').promises;
+const fs = require('fs');
 const os = require('os');
 
 // 引入服务
@@ -9,7 +9,57 @@ const executionService = require('./services/executionService.cjs');
 
 let mainWindow = null;
 
+// 获取正确的 preload 路径
+function getPreloadPath() {
+  const isDev = !!process.env.VITE_DEV_SERVER_URL || !!process.env.ELECTRON_DEV_MODE;
+  
+  console.log('[Main] Is dev mode:', isDev);
+  console.log('[Main] __dirname:', __dirname);
+  
+  if (isDev) {
+    // Dev 模式：直接从 src/main 加载
+    const devPath = path.join(process.cwd(), 'src', 'main', 'preload.cjs');
+    console.log('[Main] Dev preload path:', devPath);
+    if (fs.existsSync(devPath)) {
+      console.log('[Main] Using dev preload:', devPath);
+      return devPath;
+    }
+  }
+  
+  // 生产模式或 fallback
+  const prodPath = path.join(__dirname, 'preload.cjs');
+  console.log('[Main] Prod preload path:', prodPath);
+  
+  if (fs.existsSync(prodPath)) {
+    console.log('[Main] Using prod preload:', prodPath);
+    return prodPath;
+  }
+  
+  // 尝试其他可能的路径
+  const fallbackPaths = [
+    path.join(process.cwd(), 'dist', 'main', 'preload.cjs'),
+    path.join(process.cwd(), 'preload.cjs'),
+  ];
+  
+  for (const p of fallbackPaths) {
+    if (fs.existsSync(p)) {
+      console.log('[Main] Using fallback preload:', p);
+      return p;
+    }
+  }
+  
+  console.error('[Main] Preload not found! Tried:', [prodPath, ...fallbackPaths]);
+  return prodPath; // 返回默认路径，让 Electron 报错
+}
+
 function createWindow() {
+  const preloadPath = getPreloadPath();
+  
+  console.log('[Main] Creating window with preload:', preloadPath);
+  console.log('[Main] __dirname:', __dirname);
+  console.log('[Main] process.cwd():', process.cwd());
+  console.log('[Main] VITE_DEV_SERVER_URL:', process.env.VITE_DEV_SERVER_URL);
+  
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -19,14 +69,39 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.cjs'),
+      preload: preloadPath,
+      // 开发模式下的安全设置
+      allowRunningInsecureContent: !!process.env.VITE_DEV_SERVER_URL,
+      webSecurity: !process.env.VITE_DEV_SERVER_URL,
     },
   });
 
+  // 监听 preload 注入情况
+  mainWindow.webContents.on('dom-ready', () => {
+    console.log('[Main] DOM ready, checking preload...');
+    // 执行 JS 检查 window.electronAPI
+    mainWindow.webContents.executeJavaScript(`
+      console.log('[Renderer] window.electronAPI:', typeof window.electronAPI);
+      if (window.electronAPI) {
+        console.log('[Renderer] electronAPI methods:', Object.keys(window.electronAPI));
+      } else {
+        console.error('[Renderer] electronAPI is undefined!');
+      }
+    `);
+  });
+
+  // 监听控制台消息
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    const levels = ['debug', 'log', 'warn', 'error'];
+    console.log(`[Renderer:${levels[level] || level}] ${message}`);
+  });
+
   if (process.env.VITE_DEV_SERVER_URL) {
+    console.log('[Main] Loading dev server URL:', process.env.VITE_DEV_SERVER_URL);
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
     mainWindow.webContents.openDevTools();
   } else {
+    console.log('[Main] Loading production file');
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
 
@@ -35,7 +110,10 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  console.log('[Main] App ready');
+  createWindow();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -178,7 +256,7 @@ async function scanDirectory(dirPath) {
   async function scan(currentPath, relativePath = '') {
     let entries;
     try {
-      entries = await fs.readdir(currentPath, { withFileTypes: true });
+      entries = await fs.promises.readdir(currentPath, { withFileTypes: true });
     } catch (err) {
       return;
     }
@@ -194,7 +272,7 @@ async function scanDirectory(dirPath) {
         await scan(fullPath, relPath);
       } else if (entry.isFile()) {
         try {
-          const stats = await fs.stat(fullPath);
+          const stats = await fs.promises.stat(fullPath);
           files.push({
             name: entry.name,
             path: fullPath,
@@ -204,9 +282,7 @@ async function scanDirectory(dirPath) {
             modifiedAt: stats.mtime,
             extension: path.extname(entry.name).toLowerCase(),
           });
-        } catch (err) {
-          // 忽略无法读取的文件
-        }
+        } catch (e) {}
       }
     }
   }
