@@ -395,12 +395,12 @@ async function executeTask(taskPayload) {
     console.error('创建目录失败:', e);
   }
 
-  const { taskId, targetPath, scheme } = taskPayload;
+  const { taskId, targetPath, scheme, scannedTotal } = taskPayload;
   const logger = new OperationLogger(taskId);
 
   // 统计信息
   const stats = {
-    scanned: scheme.plannedMoves?.length || 0,      // 扫描到的文件数
+    scanned: scannedTotal || scheme.plannedMoves?.length || 0, // 扫描到的文件总数
     planned: 0,                                      // 计划处理数
     attempted: 0,                                    // 实际尝试数
     succeeded: 0,                                    // 成功数
@@ -742,9 +742,180 @@ async function rollbackLatestTask() {
   };
 }
 
+// ========== 历史隐藏目录检测与修复 ==========
+
+// 隐藏目录名到可见目录名的映射
+const HIDDEN_DIR_MAPPING = {
+  '.xlsx': 'Excel表格',
+  '.xls': 'Excel表格',
+  '.csv': 'CSV数据',
+  '.docx': 'Word文档',
+  '.doc': 'Word文档',
+  '.pdf': 'PDF文档',
+  '.txt': '文本文件',
+  '.ppt': 'PPT演示',
+  '.pptx': 'PPT演示',
+  '.key': 'Keynote演示',
+  '.xmind': 'XMind脑图',
+  '.mindnode': 'MindNode脑图',
+  '.png': 'PNG图片',
+  '.jpg': 'JPG图片',
+  '.jpeg': 'JPG图片',
+  '.gif': 'GIF动图',
+  '.webp': 'WebP图片',
+  '.zip': 'ZIP压缩包',
+  '.rar': 'RAR压缩包',
+  '.7z': '7Z压缩包',
+  '.dmg': 'DMG安装包',
+  '.pkg': 'PKG安装包',
+  '.apk': 'APK安装包',
+  '.mp3': 'MP3音频',
+  '.mp4': 'MP4视频',
+  '.mov': 'MOV视频',
+};
+
+// 检测隐藏目录
+async function detectHiddenDirectories(targetPath) {
+  const hiddenDirs = [];
+  
+  try {
+    const entries = await fs.readdir(targetPath, { withFileTypes: true });
+    
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name.startsWith('.') && entry.name.length > 1) {
+        // 排除标准系统目录如 .DS_Store
+        if (entry.name === '.DS_Store' || entry.name === '.localized') continue;
+        
+        const dirPath = path.join(targetPath, entry.name);
+        const files = await countFilesInDir(dirPath);
+        
+        // 检查是否是已知的隐藏分类目录
+        const cleanName = entry.name.toLowerCase();
+        if (HIDDEN_DIR_MAPPING[cleanName] || HIDDEN_DIR_MAPPING[cleanName.substring(1)]) {
+          hiddenDirs.push({
+            name: entry.name,
+            path: dirPath,
+            proposedName: HIDDEN_DIR_MAPPING[cleanName] || HIDDEN_DIR_MAPPING[cleanName.substring(1)] || '其他',
+            fileCount: files,
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.error('检测隐藏目录失败:', e);
+  }
+  
+  return hiddenDirs;
+}
+
+// 统计目录中的文件数
+async function countFilesInDir(dirPath) {
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    let count = 0;
+    for (const entry of entries) {
+      if (entry.isFile()) count++;
+      else if (entry.isDirectory()) {
+        count += await countFilesInDir(path.join(dirPath, entry.name));
+      }
+    }
+    return count;
+  } catch (e) {
+    return 0;
+  }
+}
+
+// 生成修复预览
+async function generateRepairPreview(hiddenDirs, targetPath) {
+  const preview = [];
+  
+  for (const dir of hiddenDirs) {
+    let finalName = dir.proposedName;
+    let conflict = false;
+    let conflictResolvedName = null;
+    
+    // 检查目标目录是否已存在
+    const targetDir = path.join(targetPath, finalName);
+    try {
+      await fs.access(targetDir);
+      // 已存在，需要添加序号
+      conflict = true;
+      let counter = 1;
+      while (true) {
+        const newName = `${finalName} (${counter})`;
+        const newPath = path.join(targetPath, newName);
+        try {
+          await fs.access(newPath);
+          counter++;
+        } catch {
+          conflictResolvedName = newName;
+          break;
+        }
+      }
+    } catch {
+      // 目录不存在，可以直接使用
+    }
+    
+    preview.push({
+      originalName: dir.name,
+      proposedName: dir.proposedName,
+      finalName: conflictResolvedName || finalName,
+      fullPath: dir.path,
+      fileCount: dir.fileCount,
+      hasConflict: conflict,
+      conflictResolvedName,
+    });
+  }
+  
+  return preview;
+}
+
+// 执行修复
+async function repairHiddenDirectories(targetPath) {
+  const hiddenDirs = await detectHiddenDirectories(targetPath);
+  
+  if (hiddenDirs.length === 0) {
+    return { success: true, message: '未发现需要修复的隐藏目录', repaired: [] };
+  }
+  
+  const preview = await generateRepairPreview(hiddenDirs, targetPath);
+  const repaired = [];
+  const failed = [];
+  
+  for (const item of preview) {
+    try {
+      const newPath = path.join(targetPath, item.finalName);
+      await fs.rename(item.fullPath, newPath);
+      repaired.push({
+        from: item.originalName,
+        to: item.finalName,
+        fileCount: item.fileCount,
+      });
+    } catch (e) {
+      failed.push({
+        from: item.originalName,
+        error: e.message,
+      });
+    }
+  }
+  
+  return {
+    success: failed.length === 0,
+    repaired,
+    failed,
+    message: failed.length === 0 
+      ? `成功修复 ${repaired.length} 个隐藏目录` 
+      : `修复完成：${repaired.length} 个成功，${failed.length} 个失败`,
+  };
+}
+
 module.exports = {
   executeTask,
   getLatestTask,
   getTaskHistory,
   rollbackLatestTask,
+  // 隐藏目录检测与修复
+  detectHiddenDirectories,
+  generateRepairPreview,
+  repairHiddenDirectories,
 };

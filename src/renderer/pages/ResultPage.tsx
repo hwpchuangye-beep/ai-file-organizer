@@ -59,7 +59,6 @@ export default function ResultPage() {
   const [expandedSuccess, setExpandedSuccess] = useState(false)
   const [expandedFolders, setExpandedFolders] = useState(false)
   const [copiedDetail, setCopiedDetail] = useState(false)
-  const [showStatsDetail, setShowStatsDetail] = useState(false)
   const [openingFile, setOpeningFile] = useState<string | null>(null)
   const [openingFolder, setOpeningFolder] = useState<string | null>(null)
 

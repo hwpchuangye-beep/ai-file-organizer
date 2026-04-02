@@ -25,6 +25,7 @@ export default function ExecutingPage() {
           taskId: Date.now().toString(),
           targetPath: scanResult.targetPath,
           scheme: adjustedScheme,
+          scannedTotal: scanResult.totalFiles,
         }
 
         setStep('正在创建文件夹...')

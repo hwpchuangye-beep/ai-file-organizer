@@ -118,7 +118,7 @@ declare global {
       openFolder: (folderPath: string) => Promise<{ success: boolean; error?: string }>
       
       // 模型服务
-      testModelConnection: (config: { baseUrl: string; apiKey?: string }) => Promise<{ success: boolean; message?: string }>
+      testModelConnection: (config: { baseUrl: string; apiKey?: string }) => Promise<{ success: boolean; message?: string; models?: string[] }>
       getModels: (config: { baseUrl: string; apiKey?: string }) => Promise<{ success: boolean; models?: string[]; message?: string }>
       generateSchemes: (scanResult: ScanResult, modelConfig: ModelConfig) => Promise<any>
       
@@ -127,6 +127,11 @@ declare global {
       getLatestTask: () => Promise<OrganizationTask | null>
       getTaskHistory: () => Promise<OrganizationTask[]>
       rollbackLatestTask: () => Promise<any>
+      
+      // 隐藏目录检测与修复
+      detectHiddenDirectories: (targetPath: string) => Promise<{ success: boolean; hiddenDirs?: any[]; error?: string }>
+      generateRepairPreview: (targetPath: string) => Promise<{ success: boolean; preview?: any[]; hiddenCount?: number; message?: string; error?: string }>
+      repairHiddenDirectories: (targetPath: string) => Promise<{ success: boolean; repaired?: any[]; failed?: any[]; message?: string; error?: string }>
     }
   }
 }

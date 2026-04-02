@@ -21,4 +21,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getLatestTask: () => ipcRenderer.invoke('get-latest-task'),
   getTaskHistory: () => ipcRenderer.invoke('get-task-history'),
   rollbackLatestTask: () => ipcRenderer.invoke('rollback-latest-task'),
+  
+  // 隐藏目录检测与修复
+  detectHiddenDirectories: (targetPath) => ipcRenderer.invoke('detect-hidden-directories', targetPath),
+  generateRepairPreview: (targetPath) => ipcRenderer.invoke('generate-repair-preview', targetPath),
+  repairHiddenDirectories: (targetPath) => ipcRenderer.invoke('repair-hidden-directories', targetPath),
 });

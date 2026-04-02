@@ -13,7 +13,7 @@ export default function ModelConfigPage() {
   const [modelName, setModelName] = useState(modelConfig?.modelName || '')
   const [apiKey, setApiKey] = useState(modelConfig?.apiKey || '')
   const [isTesting, setIsTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [testResult, setTestResult] = useState<{ success: boolean; message?: string; models?: string[] } | null>(null)
   
   // 模型列表状态
   const [availableModels, setAvailableModels] = useState<string[]>([])

@@ -134,6 +134,42 @@ ipcMain.handle('open-folder', async (_, folderPath) => {
   }
 });
 
+// ========== 隐藏目录检测与修复 ==========
+
+// 检测隐藏目录
+ipcMain.handle('detect-hidden-directories', async (_, targetPath) => {
+  try {
+    const hiddenDirs = await executionService.detectHiddenDirectories(targetPath);
+    return { success: true, hiddenDirs };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// 生成修复预览
+ipcMain.handle('generate-repair-preview', async (_, targetPath) => {
+  try {
+    const hiddenDirs = await executionService.detectHiddenDirectories(targetPath);
+    if (hiddenDirs.length === 0) {
+      return { success: true, preview: [], message: '未发现隐藏目录' };
+    }
+    const preview = await executionService.generateRepairPreview(hiddenDirs, targetPath);
+    return { success: true, preview, hiddenCount: hiddenDirs.length };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// 执行修复
+ipcMain.handle('repair-hidden-directories', async (_, targetPath) => {
+  try {
+    const result = await executionService.repairHiddenDirectories(targetPath);
+    return { success: result.success, ...result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
 // ========== Helper Functions ==========
 
 async function scanDirectory(dirPath) {

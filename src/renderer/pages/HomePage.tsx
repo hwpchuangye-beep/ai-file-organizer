@@ -1,12 +1,16 @@
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { Monitor, Download, Folder, AlertCircle, CheckCircle } from '../components/Icons'
+import { Monitor, Download, Folder, AlertCircle, CheckCircle, Wrench } from '../components/Icons'
 import { useEffect, useState } from 'react'
 
 export default function HomePage() {
   const navigate = useNavigate()
   const { modelConfig, setScanResult } = useApp()
   const [isScanning, setIsScanning] = useState(false)
+  
+  // 隐藏目录修复
+  const [showRepair, setShowRepair] = useState(false)
+  const [repairPreview, setRepairPreview] = useState<any[]>([])
 
   useEffect(() => {
     if (!modelConfig) {

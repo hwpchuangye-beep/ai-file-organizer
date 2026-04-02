@@ -36,7 +36,6 @@ jobs:
       
     - name: Type check
       run: npx tsc --noEmit
-      continue-on-error: true  # Type错误不阻断构建
       
     - name: Build renderer
       run: npm run build
