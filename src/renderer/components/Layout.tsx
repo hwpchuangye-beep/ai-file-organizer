@@ -24,7 +24,7 @@ export default function Layout({ children }: LayoutProps) {
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '0 20px',
-            WebkitAppRegion: 'drag',
+            WebkitAppRegion: 'drag' as any,
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px', WebkitAppRegion: 'no-drag' }}>
@@ -47,7 +47,7 @@ export default function Layout({ children }: LayoutProps) {
             <h1 style={{ fontSize: '15px', fontWeight: 600 }}>AI文件整理助手</h1>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', WebkitAppRegion: 'no-drag' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', WebkitAppRegion: 'no-drag' as any }}>
             <button
               onClick={() => navigate('/history')}
               style={{

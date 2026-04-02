@@ -4,7 +4,6 @@ import type {
   ScanResult,
   OrganizationScheme,
   OrganizationTask,
-  FileInfo,
 } from '@shared/types'
 
 interface AppState {

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { Cpu, Cloud, CheckCircle, AlertCircle, ArrowRight, Info } from '../components/Icons'
@@ -25,7 +25,7 @@ export default function ModelConfigPage() {
     }
 
     // 使用真实的 IPC 调用
-    const result = await window.electronAPI.testModelConnection(config)
+    const result = await window.electronAPI!.testModelConnection(config)
     setTestResult(result)
     setIsTesting(false)
   }
@@ -128,7 +128,7 @@ export default function ModelConfigPage() {
             gap: '8px',
           }}
         >
-          <Info size={16} color="#6e6e73" style={{ marginTop: '2px', flexShrink: 0 }} />
+          <Info size={16} color="#6e6e73" />
           <p style={{ fontSize: '13px', color: '#6e6e73' }}>
             若使用局域网模型，请确保模型服务允许局域网访问并开放对应端口。
             例如 LM Studio 需要在设置中开启 "Serve on Local Network"。

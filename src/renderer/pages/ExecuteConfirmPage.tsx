@@ -71,7 +71,7 @@ export default function ExecuteConfirmPage() {
           gap: '12px',
         }}
       >
-        <AlertCircle size={20} color="#007aff" style={{ flexShrink: 0 }} />
+        <AlertCircle size={20} color="#007aff" />
         <div>
           <p style={{ fontSize: '14px', fontWeight: 500, marginBottom: '4px' }}>可撤销保障</p>
           <p style={{ fontSize: '13px', color: '#6e6e73' }}>
