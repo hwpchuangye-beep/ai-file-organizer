@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { Monitor, Download, Folder, Cpu, AlertCircle, CheckCircle } from '../components/Icons'
+import { Monitor, Download, Folder, AlertCircle, CheckCircle } from '../components/Icons'
 import { useEffect, useState } from 'react'
 
 export default function HomePage() {
@@ -20,7 +20,7 @@ export default function HomePage() {
     const desktopPath = await window.electronAPI.getDesktopPath()
     const result = await window.electronAPI.scanDirectory(desktopPath)
     if (result.success) {
-      const scanResult = analyzeFiles(desktopPath, result.files)
+      const scanResult = analyzeFiles(desktopPath, result.files || [])
       setScanResult(scanResult)
       navigate('/scan-result')
     }
@@ -33,7 +33,7 @@ export default function HomePage() {
     const downloadsPath = await window.electronAPI.getDownloadsPath()
     const result = await window.electronAPI.scanDirectory(downloadsPath)
     if (result.success) {
-      const scanResult = analyzeFiles(downloadsPath, result.files)
+      const scanResult = analyzeFiles(downloadsPath, result.files || [])
       setScanResult(scanResult)
       navigate('/scan-result')
     }
@@ -47,7 +47,7 @@ export default function HomePage() {
       setIsScanning(true)
       const result = await window.electronAPI.scanDirectory(selectedPath)
       if (result.success) {
-        const scanResult = analyzeFiles(selectedPath, result.files)
+        const scanResult = analyzeFiles(selectedPath, result.files || [])
         setScanResult(scanResult)
         navigate('/scan-result')
       }
