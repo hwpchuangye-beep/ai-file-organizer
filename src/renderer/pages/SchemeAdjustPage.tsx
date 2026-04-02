@@ -1,13 +1,12 @@
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { useState } from 'react'
-import { ArrowRight, ChevronLeft, X, Folder } from '../components/Icons'
+import { ArrowRight, ChevronLeft, Folder } from '../components/Icons'
 
 export default function SchemeAdjustPage() {
   const navigate = useNavigate()
   const { selectedScheme, setAdjustedScheme } = useApp()
   const [excludedFiles, setExcludedFiles] = useState<string[]>([])
-  const [excludedFolders, setExcludedFolders] = useState<string[]>([])
 
   if (!selectedScheme) {
     navigate('/scheme-recommend')

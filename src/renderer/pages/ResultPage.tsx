@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { CheckCircle, Folder, FileText, RefreshCw, Home, AlertCircle } from '../components/Icons'
-import type { IconProps } from '../components/Icons'
 
 export default function ResultPage() {
   const navigate = useNavigate()

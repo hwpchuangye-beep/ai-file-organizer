@@ -21,6 +21,7 @@ export default function ExecuteConfirmPage() {
         target: m.targetPath,
       })),
       skippedFiles: [],
+      failedFiles: [],
       startedAt: new Date(),
       status: 'pending' as const,
     }

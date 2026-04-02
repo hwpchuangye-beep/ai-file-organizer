@@ -5,6 +5,13 @@ interface LayoutProps {
   children: React.ReactNode
 }
 
+// 扩展 CSS 属性类型以支持 Electron 特定的属性
+declare module 'react' {
+  interface CSSProperties {
+    WebkitAppRegion?: 'drag' | 'no-drag'
+  }
+}
+
 export default function Layout({ children }: LayoutProps) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -24,10 +31,10 @@ export default function Layout({ children }: LayoutProps) {
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '0 20px',
-            WebkitAppRegion: 'drag' as any,
+            WebkitAppRegion: 'drag',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', WebkitAppRegion: 'no-drag' as any }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', WebkitAppRegion: 'no-drag' }}>
             <button
               onClick={() => navigate('/')}
               style={{
@@ -47,7 +54,7 @@ export default function Layout({ children }: LayoutProps) {
             <h1 style={{ fontSize: '15px', fontWeight: 600 }}>AI文件整理助手</h1>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', WebkitAppRegion: 'no-drag' as any }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', WebkitAppRegion: 'no-drag' }}>
             <button
               onClick={() => navigate('/history')}
               style={{
