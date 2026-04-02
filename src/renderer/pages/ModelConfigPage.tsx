@@ -29,7 +29,11 @@ export default function ModelConfigPage() {
 
   const fetchModels = async (url: string, key: string) => {
     setIsLoadingModels(true)
-    const result = await window.electronAPI!.getModels({
+    if (!window.electronAPI) {
+      setIsLoadingModels(false)
+      return { success: false, message: 'Electron API 未初始化' }
+    }
+    const result = await window.electronAPI.getModels({
       baseUrl: url.replace(/\/$/, ''),
       apiKey: key,
     })
@@ -54,7 +58,12 @@ export default function ModelConfigPage() {
     }
 
     // 测试连接
-    const result = await window.electronAPI!.testModelConnection(config)
+    if (!window.electronAPI) {
+      setTestResult({ success: false, message: 'Electron API 未初始化' })
+      setIsTesting(false)
+      return
+    }
+    const result = await window.electronAPI.testModelConnection(config)
     setTestResult(result)
     
     // 如果连接成功，自动获取模型列表
