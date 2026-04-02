@@ -9,56 +9,39 @@ const executionService = require('./services/executionService.cjs');
 
 let mainWindow = null;
 
-// 获取正确的 preload 路径
-function getPreloadPath() {
-  const isDev = !!process.env.VITE_DEV_SERVER_URL || !!process.env.ELECTRON_DEV_MODE;
-  
-  console.log('[Main] Is dev mode:', isDev);
-  console.log('[Main] __dirname:', __dirname);
-  
-  if (isDev) {
-    // Dev 模式：直接从 src/main 加载
-    const devPath = path.join(process.cwd(), 'src', 'main', 'preload.cjs');
-    console.log('[Main] Dev preload path:', devPath);
-    if (fs.existsSync(devPath)) {
-      console.log('[Main] Using dev preload:', devPath);
-      return devPath;
-    }
-  }
-  
-  // 生产模式或 fallback
-  const prodPath = path.join(__dirname, 'preload.cjs');
-  console.log('[Main] Prod preload path:', prodPath);
-  
-  if (fs.existsSync(prodPath)) {
-    console.log('[Main] Using prod preload:', prodPath);
-    return prodPath;
-  }
-  
-  // 尝试其他可能的路径
-  const fallbackPaths = [
-    path.join(process.cwd(), 'dist', 'main', 'preload.cjs'),
-    path.join(process.cwd(), 'preload.cjs'),
-  ];
-  
-  for (const p of fallbackPaths) {
-    if (fs.existsSync(p)) {
-      console.log('[Main] Using fallback preload:', p);
-      return p;
-    }
-  }
-  
-  console.error('[Main] Preload not found! Tried:', [prodPath, ...fallbackPaths]);
-  return prodPath; // 返回默认路径，让 Electron 报错
-}
-
 function createWindow() {
-  const preloadPath = getPreloadPath();
-  
-  console.log('[Main] Creating window with preload:', preloadPath);
-  console.log('[Main] __dirname:', __dirname);
-  console.log('[Main] process.cwd():', process.cwd());
-  console.log('[Main] VITE_DEV_SERVER_URL:', process.env.VITE_DEV_SERVER_URL);
+  // 确定 preload 的绝对路径
+  // 使用 require.resolve 确保路径正确
+  let preloadPath;
+  try {
+    // 尝试相对于当前文件的路径
+    preloadPath = path.resolve(__dirname, 'preload.cjs');
+    
+    // 如果文件不存在，尝试其他路径
+    if (!fs.existsSync(preloadPath)) {
+      // 尝试从项目根目录
+      preloadPath = path.resolve(process.cwd(), 'src', 'main', 'preload.cjs');
+    }
+    
+    // 仍然不存在，尝试 dist 目录
+    if (!fs.existsSync(preloadPath)) {
+      preloadPath = path.resolve(process.cwd(), 'dist', 'main', 'preload.cjs');
+    }
+    
+    if (!fs.existsSync(preloadPath)) {
+      console.error('[Main] CRITICAL: preload.cjs not found at any location');
+      console.error('[Main] __dirname:', __dirname);
+      console.error('[Main] process.cwd():', process.cwd());
+    } else {
+      console.log('[Main] Preload path resolved to:', preloadPath);
+    }
+  } catch (e) {
+    console.error('[Main] Error resolving preload path:', e);
+    preloadPath = path.join(__dirname, 'preload.cjs');
+  }
+
+  console.log('[Main] Creating BrowserWindow...');
+  console.log('[Main] Preload path:', preloadPath);
   
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -66,43 +49,68 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     titleBarStyle: 'hiddenInset',
+    show: false, // 先不显示，等加载完成
     webPreferences: {
-      nodeIntegration: false,
-      contextIsolation: true,
       preload: preloadPath,
-      // 开发模式下的安全设置
-      allowRunningInsecureContent: !!process.env.VITE_DEV_SERVER_URL,
-      webSecurity: !process.env.VITE_DEV_SERVER_URL,
+      contextIsolation: true,  // 必须开启才能使用 contextBridge
+      nodeIntegration: false,  // 必须关闭以提高安全性
+      sandbox: false,          // 开发模式下关闭 sandbox 以便 preload 工作
+      allowRunningInsecureContent: false,
+      webSecurity: true,
     },
   });
 
-  // 监听 preload 注入情况
-  mainWindow.webContents.on('dom-ready', () => {
-    console.log('[Main] DOM ready, checking preload...');
-    // 执行 JS 检查 window.electronAPI
+  // 等待窗口准备好再显示
+  mainWindow.once('ready-to-show', () => {
+    console.log('[Main] Window ready to show');
+    mainWindow.show();
+    
+    // 打开 DevTools 便于调试（开发模式）
+    if (process.env.VITE_DEV_SERVER_URL) {
+      mainWindow.webContents.openDevTools();
+    }
+  });
+
+  // 监听页面加载完成
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('[Main] Page finished loading');
+    
+    // 检查 window.electronAPI 是否可用
     mainWindow.webContents.executeJavaScript(`
-      console.log('[Renderer] window.electronAPI:', typeof window.electronAPI);
-      if (window.electronAPI) {
-        console.log('[Renderer] electronAPI methods:', Object.keys(window.electronAPI));
+      (function() {
+        if (typeof window.electronAPI !== 'undefined' && window.electronAPI !== null) {
+          console.log('[Renderer] electronAPI is available');
+          return { success: true, methods: Object.keys(window.electronAPI) };
+        } else {
+          console.error('[Renderer] electronAPI is NOT available');
+          return { success: false, error: 'electronAPI not found' };
+        }
+      })()
+    `).then(result => {
+      if (result.success) {
+        console.log('[Main] electronAPI verified, methods:', result.methods.length);
       } else {
-        console.error('[Renderer] electronAPI is undefined!');
+        console.error('[Main] electronAPI verification FAILED');
       }
-    `);
+    }).catch(err => {
+      console.error('[Main] Error verifying electronAPI:', err);
+    });
   });
 
   // 监听控制台消息
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    const levels = ['debug', 'log', 'warn', 'error'];
-    console.log(`[Renderer:${levels[level] || level}] ${message}`);
+    const prefix = ['debug', 'log', 'warn', 'error'][level] || 'log';
+    console.log(`[Renderer:${prefix}] ${message}`);
   });
 
+  // 加载页面
   if (process.env.VITE_DEV_SERVER_URL) {
-    console.log('[Main] Loading dev server URL:', process.env.VITE_DEV_SERVER_URL);
+    console.log('[Main] Loading dev server:', process.env.VITE_DEV_SERVER_URL);
     mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    mainWindow.webContents.openDevTools();
   } else {
-    console.log('[Main] Loading production file');
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+    const htmlPath = path.join(__dirname, '../renderer/index.html');
+    console.log('[Main] Loading production file:', htmlPath);
+    mainWindow.loadFile(htmlPath);
   }
 
   mainWindow.on('closed', () => {
@@ -111,7 +119,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  console.log('[Main] App ready');
+  console.log('[Main] Electron app ready');
   createWindow();
 });
 
@@ -129,7 +137,6 @@ app.on('activate', () => {
 
 // ========== IPC Handlers ==========
 
-// 选择目录
 ipcMain.handle('select-directory', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory'],
@@ -137,17 +144,14 @@ ipcMain.handle('select-directory', async () => {
   return result.filePaths[0] || null;
 });
 
-// 获取桌面路径
 ipcMain.handle('get-desktop-path', () => {
   return path.join(os.homedir(), 'Desktop');
 });
 
-// 获取下载路径
 ipcMain.handle('get-downloads-path', () => {
   return path.join(os.homedir(), 'Downloads');
 });
 
-// 扫描目录
 ipcMain.handle('scan-directory', async (_, dirPath) => {
   try {
     const files = await scanDirectory(dirPath);
@@ -157,42 +161,34 @@ ipcMain.handle('scan-directory', async (_, dirPath) => {
   }
 });
 
-// 测试模型连接
 ipcMain.handle('test-model-connection', async (_, config) => {
   return await modelService.testConnection(config);
 });
 
-// 获取模型列表
 ipcMain.handle('get-models', async (_, config) => {
   return await modelService.getModels(config);
 });
 
-// 生成整理方案
 ipcMain.handle('generate-schemes', async (_, scanResult, modelConfig) => {
   return await modelService.generateSchemes(scanResult, modelConfig);
 });
 
-// 执行整理任务
 ipcMain.handle('execute-task', async (_, taskPayload) => {
   return await executionService.executeTask(taskPayload);
 });
 
-// 获取最近任务
 ipcMain.handle('get-latest-task', async () => {
   return await executionService.getLatestTask();
 });
 
-// 获取任务历史
 ipcMain.handle('get-task-history', async () => {
   return await executionService.getTaskHistory();
 });
 
-// 撤销最近任务
 ipcMain.handle('rollback-latest-task', async () => {
   return await executionService.rollbackLatestTask();
 });
 
-// 在 Finder 中显示文件
 ipcMain.handle('show-in-folder', async (_, filePath) => {
   try {
     await shell.showItemInFolder(filePath);
@@ -202,7 +198,6 @@ ipcMain.handle('show-in-folder', async (_, filePath) => {
   }
 });
 
-// 打开文件夹
 ipcMain.handle('open-folder', async (_, folderPath) => {
   try {
     await shell.openPath(folderPath);
@@ -212,9 +207,6 @@ ipcMain.handle('open-folder', async (_, folderPath) => {
   }
 });
 
-// ========== 隐藏目录检测与修复 ==========
-
-// 检测隐藏目录
 ipcMain.handle('detect-hidden-directories', async (_, targetPath) => {
   try {
     const hiddenDirs = await executionService.detectHiddenDirectories(targetPath);
@@ -224,7 +216,6 @@ ipcMain.handle('detect-hidden-directories', async (_, targetPath) => {
   }
 });
 
-// 生成修复预览
 ipcMain.handle('generate-repair-preview', async (_, targetPath) => {
   try {
     const hiddenDirs = await executionService.detectHiddenDirectories(targetPath);
@@ -238,7 +229,6 @@ ipcMain.handle('generate-repair-preview', async (_, targetPath) => {
   }
 });
 
-// 执行修复
 ipcMain.handle('repair-hidden-directories', async (_, targetPath) => {
   try {
     const result = await executionService.repairHiddenDirectories(targetPath);
@@ -262,7 +252,6 @@ async function scanDirectory(dirPath) {
     }
     
     for (const entry of entries) {
-      // 跳过隐藏文件和目录
       if (entry.name.startsWith('.')) continue;
       
       const fullPath = path.join(currentPath, entry.name);

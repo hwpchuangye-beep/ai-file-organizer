@@ -8,6 +8,10 @@ export default function HomePage() {
   const { modelConfig, setScanResult } = useApp()
   const [isScanning, setIsScanning] = useState(false)
   
+  // Electron API 就绪检查
+  const [apiReady, setApiReady] = useState(false)
+  const [apiCheckCount, setApiCheckCount] = useState(0)
+  
   // 隐藏目录检测与修复
   const [showRepairModal, setShowRepairModal] = useState(false)
   const [repairPreview, setRepairPreview] = useState<any[]>([])
@@ -15,11 +19,41 @@ export default function HomePage() {
   const [repairResult, setRepairResult] = useState<any>(null)
   const [pendingScanPath, setPendingScanPath] = useState<string | null>(null)
 
+  // 等待 Electron API 就绪
   useEffect(() => {
-    if (!modelConfig) {
+    const checkApi = () => {
+      if (window.electronAPI) {
+        console.log('[HomePage] electronAPI is ready');
+        setApiReady(true);
+        return true;
+      }
+      return false;
+    };
+    
+    // 立即检查一次
+    if (checkApi()) return;
+    
+    // 如果未就绪，每秒检查一次，最多检查 10 次
+    let attempts = 0;
+    const maxAttempts = 10;
+    
+    const interval = setInterval(() => {
+      attempts++;
+      setApiCheckCount(attempts);
+      
+      if (checkApi() || attempts >= maxAttempts) {
+        clearInterval(interval);
+      }
+    }, 500);
+    
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (!modelConfig && apiReady) {
       navigate('/model-config')
     }
-  }, [modelConfig, navigate])
+  }, [modelConfig, navigate, apiReady])
 
   const handleCheckDesktop = async () => {
     if (!window.electronAPI) return
@@ -88,7 +122,6 @@ export default function HomePage() {
     setIsRepairing(false)
     
     if (result.success) {
-      // 修复成功，延迟后关闭弹窗并扫描
       setTimeout(() => {
         setShowRepairModal(false)
         setRepairPreview([])
@@ -115,6 +148,67 @@ export default function HomePage() {
   }
 
   const isConnected = modelConfig?.isConnected
+
+  // 如果 API 未就绪，显示加载状态
+  if (!apiReady) {
+    return (
+      <div
+        style={{
+          width: '100%',
+          height: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'linear-gradient(135deg, #f5f5f7 0%, #e8e8ed 100%)',
+        }}
+      >
+        <div
+          style={{
+            width: '48px',
+            height: '48px',
+            border: '4px solid #e3e3e8',
+            borderTopColor: '#007aff',
+            borderRadius: '50%',
+            animation: 'spin 1s linear infinite',
+            marginBottom: '20px',
+          }}
+        />
+        <p style={{ fontSize: '16px', color: '#1d1d1f', fontWeight: 500 }}>
+          正在初始化应用...
+        </p>
+        <p style={{ fontSize: '13px', color: '#6e6e73', marginTop: '8px' }}>
+          等待 Electron API 就绪 ({apiCheckCount}/10)
+        </p>
+        {apiCheckCount >= 10 && (
+          <div style={{ marginTop: '20px', textAlign: 'center' }}>
+            <p style={{ fontSize: '14px', color: '#ff3b30' }}>
+              初始化超时，请重启应用
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                marginTop: '12px',
+                padding: '10px 20px',
+                background: '#007aff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+              }}
+            >
+              重试
+            </button>
+          </div>
+        )}
+        <style>{`
+          @keyframes spin {
+            to { transform: rotate(360deg); }
+          }
+        `}</style>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -412,7 +506,7 @@ export default function HomePage() {
                     >
                       {isRepairing ? (
                         <>
-                          <RefreshCw size={16} spin={true} />
+                          <RefreshCw size={16} className="spin" />
                           修复中...
                         </>
                       ) : (
@@ -538,6 +632,9 @@ export default function HomePage() {
       <style>{`
         @keyframes spin {
           to { transform: rotate(360deg); }
+        }
+        .spin {
+          animation: spin 1s linear infinite;
         }
       `}</style>
     </div>

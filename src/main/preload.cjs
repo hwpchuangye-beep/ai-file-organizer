@@ -1,9 +1,14 @@
+// Electron Preload Script
+// 这个脚本在渲染进程之前执行，用于安全地暴露主进程 API
+
 const { contextBridge, ipcRenderer } = require('electron');
 
-console.log('[Preload] Starting preload script...');
+console.log('[Preload] Script starting...');
+console.log('[Preload] process.contextIsolated:', process.contextIsolated);
 
 try {
-  const electronAPI = {
+  // 定义要暴露的 API
+  const api = {
     // 基础文件操作
     selectDirectory: () => ipcRenderer.invoke('select-directory'),
     getDesktopPath: () => ipcRenderer.invoke('get-desktop-path'),
@@ -31,21 +36,23 @@ try {
     repairHiddenDirectories: (targetPath) => ipcRenderer.invoke('repair-hidden-directories', targetPath),
   };
 
-  // 暴露 API 到渲染进程
-  contextBridge.exposeInMainWorld('electronAPI', electronAPI);
-  
-  console.log('[Preload] electronAPI exposed successfully');
-  console.log('[Preload] Available methods:', Object.keys(electronAPI));
-  
-  // 验证暴露是否成功
-  if (typeof window !== 'undefined') {
-    console.log('[Preload] window.electronAPI check:', typeof window.electronAPI);
+  // 使用 contextBridge 安全地暴露 API
+  if (process.contextIsolated) {
+    // 上下文隔离开启时使用 contextBridge
+    contextBridge.exposeInMainWorld('electronAPI', api);
+    console.log('[Preload] API exposed via contextBridge');
+  } else {
+    // 上下文隔离关闭时直接挂载（不推荐，仅用于调试）
+    window.electronAPI = api;
+    console.log('[Preload] API exposed directly to window (contextIsolation is off)');
   }
+
+  // 验证暴露是否成功
+  console.log('[Preload] Exposed methods:', Object.keys(api).join(', '));
+  
 } catch (error) {
-  console.error('[Preload] Error exposing electronAPI:', error);
+  console.error('[Preload] CRITICAL ERROR:', error);
+  console.error('[Preload] Stack:', error.stack);
 }
 
-// 添加一个全局错误处理器
-process.on('uncaughtException', (error) => {
-  console.error('[Preload] Uncaught exception:', error);
-});
+console.log('[Preload] Script completed');
