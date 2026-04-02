@@ -65,7 +65,8 @@ export default function SchemeRecommendPage() {
 
   const handleSelectScheme = (scheme: OrganizationScheme) => {
     setSelectedScheme(scheme)
-    navigate('/execute-confirm')
+    // 先跳转到方案调整页，让用户确认后再执行
+    navigate('/scheme-adjust')
   }
 
   if (isGenerating) {
