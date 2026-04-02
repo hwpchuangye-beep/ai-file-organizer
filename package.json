@@ -68,7 +68,10 @@
         }
       ],
       "category": "public.app-category.productivity",
-      "icon": "assets/icon.icns"
+      "icon": "assets/icon.icns",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
     },
     "dmg": {
       "title": "AI文件整理助手安装",
