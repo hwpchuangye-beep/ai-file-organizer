@@ -7,6 +7,7 @@ interface ElectronAPI {
   
   // 模型服务
   testModelConnection: (config: any) => Promise<{ success: boolean; message: string; models?: string[] }>
+  getModels: (config: any) => Promise<{ success: boolean; message?: string; models?: string[] }>
   generateSchemes: (scanResult: any, modelConfig: any) => Promise<{ 
     success: boolean; 
     schemes?: any[]; 

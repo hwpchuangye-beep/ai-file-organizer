@@ -84,6 +84,11 @@ ipcMain.handle('test-model-connection', async (_, config) => {
   return await modelService.testConnection(config);
 });
 
+// 获取模型列表
+ipcMain.handle('get-models', async (_, config) => {
+  return await modelService.getModels(config);
+});
+
 // 生成整理方案
 ipcMain.handle('generate-schemes', async (_, scanResult, modelConfig) => {
   return await modelService.generateSchemes(scanResult, modelConfig);

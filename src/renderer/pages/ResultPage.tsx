@@ -19,7 +19,15 @@ export default function ResultPage() {
     setUndoResult(null)
     
     try {
-      const result = await window.electronAPI!.rollbackLatestTask()
+      if (!window.electronAPI) {
+        setUndoResult({
+          success: false,
+          message: 'Electron API 未初始化',
+        })
+        setIsUndoing(false)
+        return
+      }
+      const result = await window.electronAPI.rollbackLatestTask()
       setUndoResult({
         success: result.success,
         message: result.message || (result.success ? '撤销成功' : '撤销失败'),

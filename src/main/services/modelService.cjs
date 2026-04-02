@@ -322,4 +322,60 @@ function generatePreviewTree(plannedMoves, folders) {
   return root;
 }
 
-module.exports = { testConnection, generateSchemes };
+/**
+ * 获取可用模型列表
+ */
+async function getModels(config) {
+  const { baseUrl, apiKey } = config;
+  
+  try {
+    const url = new URL(`${baseUrl}/v1/models`);
+    const client = url.protocol === 'https:' ? https : http;
+    
+    const options = {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        ...(apiKey && { 'Authorization': `Bearer ${apiKey}` }),
+      },
+      timeout: 10000,
+    };
+
+    return new Promise((resolve) => {
+      const req = client.request(url, options, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            try {
+              const result = JSON.parse(data);
+              const models = result.data?.map(m => m.id) || [];
+              resolve({ success: true, models });
+            } catch (e) {
+              resolve({ success: false, message: '解析模型列表失败' });
+            }
+          } else if (res.statusCode === 401) {
+            resolve({ success: false, message: 'API Key 无效' });
+          } else {
+            resolve({ success: false, message: `服务返回错误: ${res.statusCode}` });
+          }
+        });
+      });
+
+      req.on('error', () => {
+        resolve({ success: false, message: '无法连接到服务' });
+      });
+
+      req.on('timeout', () => {
+        req.destroy();
+        resolve({ success: false, message: '请求超时' });
+      });
+
+      req.end();
+    });
+  } catch (error) {
+    return { success: false, message: '无法连接到服务' };
+  }
+}
+
+module.exports = { testConnection, generateSchemes, getModels };

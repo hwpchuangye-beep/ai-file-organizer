@@ -43,6 +43,7 @@ export interface OrganizationScheme {
   plannedMoves: PlannedMove[]
   uncertainItems: UncertainItem[]
   previewTree: DirectoryNode
+  source?: 'model' | 'fallback'
 }
 
 export interface PlannedMove {
@@ -70,13 +71,32 @@ export interface FileNode {
   isFile: true
 }
 
+export type FailedFileErrorCode =
+  | 'DUPLICATE_NAME'
+  | 'PERMISSION_DENIED'
+  | 'SOURCE_NOT_FOUND'
+  | 'FILE_LOCKED'
+  | 'CROSS_VOLUME_MOVE'
+  | 'INVALID_PATH_CHARS'
+  | 'TARGET_DIR_CREATE_FAILED'
+  | 'UNKNOWN'
+
+export interface FailedFile {
+  source: string
+  target?: string
+  reason: string
+  errorCode: FailedFileErrorCode
+  existsInSource?: boolean
+  suggestion?: string
+}
+
 export interface OrganizationTask {
   taskId: string
   targetPath: string
   createdFolders: string[]
   movedFiles: { source: string; target: string }[]
   skippedFiles: string[]
-  failedFiles: string[]
+  failedFiles: FailedFile[]
   startedAt: Date
   finishedAt?: Date
   status: 'pending' | 'running' | 'completed' | 'failed'

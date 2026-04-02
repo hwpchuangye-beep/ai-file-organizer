@@ -31,7 +31,12 @@ export default function ExecutingPage() {
         setProgress(30)
 
         // 调用真实的执行服务
-        const result = await window.electronAPI!.executeTask(taskPayload)
+        if (!window.electronAPI) {
+          setError('Electron API 未初始化')
+          setProgress(0)
+          return
+        }
+        const result = await window.electronAPI.executeTask(taskPayload)
 
         setProgress(80)
         setStep('正在记录执行结果...')

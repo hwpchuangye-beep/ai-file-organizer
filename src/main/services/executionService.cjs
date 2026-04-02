@@ -1,5 +1,6 @@
 /**
  * 执行服务 - 处理真实的文件操作
+ * 增强版：详细日志、失败分类、跨卷移动支持
  */
 
 const fs = require('fs').promises;
@@ -8,16 +9,267 @@ const os = require('os');
 
 // 任务存储目录
 const TASKS_DIR = path.join(os.homedir(), '.ai-file-organizer', 'tasks');
+const LOGS_DIR = path.join(os.homedir(), '.ai-file-organizer', 'logs');
 
 /**
- * 确保任务目录存在
+ * 日志记录器类
  */
-async function ensureTasksDir() {
+class OperationLogger {
+  constructor(taskId) {
+    this.taskId = taskId;
+    this.logs = [];
+    this.logFile = path.join(LOGS_DIR, `${taskId}.log`);
+  }
+
+  /**
+   * 记录日志
+   * @param {string} level - 日志级别: INFO, WARN, ERROR
+   * @param {string} message - 日志消息
+   * @param {Object} details - 详细信息
+   */
+  async log(level, message, details = null) {
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+      timestamp,
+      level,
+      message,
+      details,
+    };
+    this.logs.push(logEntry);
+
+    // 控制台输出
+    const consoleMessage = `[${timestamp}] [${level}] ${message}`;
+    if (level === 'ERROR') {
+      console.error(consoleMessage, details || '');
+    } else if (level === 'WARN') {
+      console.warn(consoleMessage, details || '');
+    } else {
+      console.log(consoleMessage, details || '');
+    }
+
+    // 写入日志文件
+    await this.writeToFile(logEntry);
+  }
+
+  /**
+   * 记录信息日志
+   */
+  async info(message, details = null) {
+    await this.log('INFO', message, details);
+  }
+
+  /**
+   * 记录警告日志
+   */
+  async warn(message, details = null) {
+    await this.log('WARN', message, details);
+  }
+
+  /**
+   * 记录错误日志
+   */
+  async error(message, details = null) {
+    await this.log('ERROR', message, details);
+  }
+
+  /**
+   * 写入日志文件
+   */
+  async writeToFile(logEntry) {
+    try {
+      await fs.mkdir(LOGS_DIR, { recursive: true });
+      const logLine = JSON.stringify(logEntry) + '\n';
+      await fs.appendFile(this.logFile, logLine, 'utf-8');
+    } catch (e) {
+      console.error('写入日志文件失败:', e);
+    }
+  }
+
+  /**
+   * 获取所有日志
+   */
+  getLogs() {
+    return this.logs;
+  }
+}
+
+/**
+ * 错误分类器
+ * @param {Error} error - 错误对象
+ * @returns {Object} - 错误分类结果
+ */
+function classifyError(error) {
+  const code = error.code;
+  let category = 'UNKNOWN';
+  let userMessage = '未知错误';
+
+  switch (code) {
+    case 'EEXIST':
+      category = 'EEXIST';
+      userMessage = '目标文件已存在（重名冲突）';
+      break;
+    case 'EACCES':
+    case 'EPERM':
+      category = 'PERMISSION';
+      userMessage = '权限不足，无法访问文件或目录';
+      break;
+    case 'ENOENT':
+      category = 'NOT_FOUND';
+      userMessage = '源文件或目标路径不存在';
+      break;
+    case 'EBUSY':
+      category = 'BUSY';
+      userMessage = '文件被其他程序占用';
+      break;
+    case 'EXDEV':
+      category = 'CROSS_DEVICE';
+      userMessage = '跨卷移动需要复制操作';
+      break;
+    case 'ENOSPC':
+      category = 'NO_SPACE';
+      userMessage = '磁盘空间不足';
+      break;
+    case 'ENOTEMPTY':
+      category = 'NOT_EMPTY';
+      userMessage = '目录不为空';
+      break;
+    case 'EISDIR':
+      category = 'IS_DIRECTORY';
+      userMessage = '目标是目录而非文件';
+      break;
+    case 'ENOTDIR':
+      category = 'NOT_DIRECTORY';
+      userMessage = '目标路径不是目录';
+      break;
+    default:
+      category = 'UNKNOWN';
+      userMessage = error.message || '未知错误';
+  }
+
+  return {
+    code: code || 'UNKNOWN',
+    category,
+    userMessage,
+    originalError: error.message,
+  };
+}
+
+/**
+ * 确保目录存在
+ */
+async function ensureDirectories() {
   try {
     await fs.mkdir(TASKS_DIR, { recursive: true });
+    await fs.mkdir(LOGS_DIR, { recursive: true });
   } catch (e) {
-    console.error('创建任务目录失败:', e);
+    console.error('创建目录失败:', e);
   }
+}
+
+/**
+ * 安全地移动文件（支持跨卷）
+ * @param {string} source - 源文件路径
+ * @param {string} target - 目标文件路径
+ * @param {OperationLogger} logger - 日志记录器
+ * @returns {Promise<Object>} - 移动结果
+ */
+async function safeMoveFile(source, target, logger) {
+  await logger.info(`准备移动: ${source} -> ${target}`);
+
+  try {
+    // 首先尝试直接重命名（同卷移动，最快）
+    await fs.rename(source, target);
+    await logger.info(`移动成功: ${source} -> ${target}`, { method: 'rename' });
+    return { success: true, method: 'rename' };
+  } catch (error) {
+    const errorInfo = classifyError(error);
+
+    // 如果是跨卷移动错误，使用复制+删除方式
+    if (errorInfo.code === 'EXDEV') {
+      await logger.warn(`检测到跨卷移动，改用 copy+unlink 方式: ${source}`);
+      return await crossDeviceMove(source, target, logger);
+    }
+
+    // 其他错误，记录并抛出
+    await logger.error(`移动失败: ${source}`, {
+      error: errorInfo,
+      target,
+    });
+    throw error;
+  }
+}
+
+/**
+ * 跨卷移动文件（copy + unlink）
+ * @param {string} source - 源文件路径
+ * @param {string} target - 目标文件路径
+ * @param {OperationLogger} logger - 日志记录器
+ * @returns {Promise<Object>} - 移动结果
+ */
+async function crossDeviceMove(source, target, logger) {
+  try {
+    // 复制文件
+    await logger.info(`开始复制文件: ${source} -> ${target}`);
+    await fs.copyFile(source, target, fs.constants.COPYFILE_EXCL);
+    await logger.info(`复制成功: ${source} -> ${target}`);
+
+    // 删除源文件
+    await logger.info(`删除源文件: ${source}`);
+    await fs.unlink(source);
+    await logger.info(`删除源文件成功: ${source}`);
+
+    await logger.info(`跨卷移动成功: ${source} -> ${target}`, { method: 'copy+unlink' });
+    return { success: true, method: 'copy+unlink' };
+  } catch (error) {
+    const errorInfo = classifyError(error);
+    await logger.error(`跨卷移动失败: ${source}`, {
+      error: errorInfo,
+      target,
+    });
+
+    // 如果复制成功但删除失败，记录警告
+    try {
+      await fs.access(target);
+      await logger.warn(`文件已复制到目标位置，但删除源文件失败: ${source}`);
+    } catch {
+      // 目标文件也不存在，复制就失败了
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * 生成唯一的文件名（处理重名冲突）
+ * @param {string} targetPath - 目标目录
+ * @param {string} fileName - 原始文件名
+ * @param {OperationLogger} logger - 日志记录器
+ * @returns {Promise<string>} - 可用的目标路径
+ */
+async function generateUniqueFilePath(targetPath, fileName, logger) {
+  let finalTargetPath = path.join(targetPath, fileName);
+  let counter = 1;
+  const ext = path.extname(fileName);
+  const baseName = path.basename(fileName, ext);
+
+  while (true) {
+    try {
+      await fs.access(finalTargetPath);
+      // 文件存在，添加序号
+      const newName = `${baseName} (${counter})${ext}`;
+      finalTargetPath = path.join(targetPath, newName);
+      await logger.info(`检测到重名文件，生成新文件名: ${newName}`, {
+        originalName: fileName,
+        counter,
+      });
+      counter++;
+    } catch {
+      // 文件不存在，可以使用这个路径
+      break;
+    }
+  }
+
+  return finalTargetPath;
 }
 
 /**
@@ -26,13 +278,19 @@ async function ensureTasksDir() {
  * @returns {Promise<Object>}
  */
 async function executeTask(taskPayload) {
-  await ensureTasksDir();
-  
-  const {
+  await ensureDirectories();
+
+  const { taskId, targetPath, scheme } = taskPayload;
+
+  // 创建日志记录器
+  const logger = new OperationLogger(taskId);
+  await logger.info('任务开始执行', {
     taskId,
     targetPath,
-    scheme,
-  } = taskPayload;
+    schemeId: scheme.schemeId,
+    folderCount: scheme.suggestedFolders?.length || 0,
+    moveCount: scheme.plannedMoves?.length || 0,
+  });
 
   const result = {
     taskId,
@@ -45,86 +303,131 @@ async function executeTask(taskPayload) {
     startedAt: new Date().toISOString(),
     finishedAt: null,
     status: 'running',
+    logs: [],
   };
 
   try {
     // 1. 创建目标文件夹
+    await logger.info('开始创建文件夹', {
+      folders: scheme.suggestedFolders,
+    });
+
     for (const folderName of scheme.suggestedFolders) {
       try {
         const folderPath = path.join(targetPath, folderName);
+        await logger.info(`准备创建文件夹: ${folderPath}`);
         await fs.mkdir(folderPath, { recursive: true });
         result.createdFolders.push(folderPath);
+        await logger.info(`文件夹创建成功: ${folderPath}`);
       } catch (e) {
-        console.error(`创建文件夹失败: ${folderName}`, e);
+        const errorInfo = classifyError(e);
+        await logger.error(`创建文件夹失败: ${folderName}`, errorInfo);
         result.failedFiles.push({
           type: 'create_folder',
           name: folderName,
-          error: e.message,
+          error: errorInfo.userMessage,
+          errorCode: errorInfo.code,
+          errorCategory: errorInfo.category,
         });
       }
     }
 
+    await logger.info('文件夹创建阶段完成', {
+      successCount: result.createdFolders.length,
+      failedCount: result.failedFiles.filter((f) => f.type === 'create_folder').length,
+    });
+
     // 2. 移动文件
+    await logger.info('开始移动文件', {
+      totalFiles: scheme.plannedMoves?.length || 0,
+    });
+
     for (const move of scheme.plannedMoves) {
       const { file, targetFolder } = move;
-      
+
       // 跳过已被排除的文件
       if (!file || !file.path) {
+        const skipReason = '文件信息不完整';
+        await logger.warn(`跳过文件: ${file?.name || '未知'}`, { reason: skipReason });
         result.skippedFiles.push({
           name: file?.name || '未知',
-          reason: '文件信息不完整',
+          reason: skipReason,
         });
         continue;
       }
 
-      const targetPath_full = path.join(targetPath, targetFolder, file.name);
-      
+      const targetFolderPath = path.join(targetPath, targetFolder);
+      const targetPathFull = path.join(targetFolderPath, file.name);
+
       try {
         // 检查源文件是否存在
-        await fs.access(file.path);
-        
-        // 检查目标是否已存在同名文件
-        let finalTargetPath = targetPath_full;
-        let counter = 1;
-        const ext = path.extname(file.name);
-        const baseName = path.basename(file.name, ext);
-        
-        while (true) {
-          try {
-            await fs.access(finalTargetPath);
-            // 文件存在，添加序号
-            finalTargetPath = path.join(
-              targetPath, 
-              targetFolder, 
-              `${baseName} (${counter})${ext}`
-            );
-            counter++;
-          } catch {
-            // 文件不存在，可以使用这个路径
-            break;
-          }
+        await logger.info(`检查源文件是否存在: ${file.path}`);
+        try {
+          await fs.access(file.path);
+        } catch (accessError) {
+          const errorInfo = classifyError(accessError);
+          await logger.error(`源文件不存在或无法访问: ${file.path}`, errorInfo);
+          result.skippedFiles.push({
+            name: file.name,
+            source: file.path,
+            reason: `源文件不存在: ${errorInfo.userMessage}`,
+          });
+          continue;
         }
 
-        // 执行移动
-        await fs.rename(file.path, finalTargetPath);
-        
+        // 生成唯一的目标路径（处理重名）
+        const finalTargetPath = await generateUniqueFilePath(
+          targetFolderPath,
+          file.name,
+          logger
+        );
+
+        // 执行移动（支持跨卷）
+        const moveResult = await safeMoveFile(file.path, finalTargetPath, logger);
+
         result.movedFiles.push({
           source: file.path,
           target: finalTargetPath,
           originalName: file.name,
+          method: moveResult.method,
         });
       } catch (e) {
+        const errorInfo = classifyError(e);
+        await logger.error(`移动文件失败: ${file.name}`, {
+          source: file.path,
+          target: targetPathFull,
+          error: errorInfo,
+        });
+
         result.failedFiles.push({
           name: file.name,
           source: file.path,
-          target: targetPath_full,
-          error: e.message,
+          target: targetPathFull,
+          error: errorInfo.userMessage,
+          errorCode: errorInfo.code,
+          errorCategory: errorInfo.category,
+          originalError: errorInfo.originalError,
         });
       }
     }
 
+    await logger.info('文件移动阶段完成', {
+      successCount: result.movedFiles.length,
+      skippedCount: result.skippedFiles.length,
+      failedCount: result.failedFiles.filter((f) => !f.type).length,
+    });
+
     result.status = 'completed';
     result.finishedAt = new Date().toISOString();
+    result.logs = logger.getLogs();
+
+    await logger.info('任务执行完成', {
+      status: result.status,
+      createdFolders: result.createdFolders.length,
+      movedFiles: result.movedFiles.length,
+      skippedFiles: result.skippedFiles.length,
+      failedFiles: result.failedFiles.length,
+    });
 
     // 保存任务记录
     await saveTask(result);
@@ -134,15 +437,24 @@ async function executeTask(taskPayload) {
       result,
     };
   } catch (error) {
+    const errorInfo = classifyError(error);
+    await logger.error('任务执行失败', {
+      error: errorInfo,
+      stack: error.stack,
+    });
+
     result.status = 'failed';
     result.finishedAt = new Date().toISOString();
-    result.error = error.message;
-    
+    result.error = errorInfo.userMessage;
+    result.errorDetails = errorInfo;
+    result.logs = logger.getLogs();
+
     await saveTask(result);
-    
+
     return {
       success: false,
-      error: error.message,
+      error: errorInfo.userMessage,
+      errorDetails: errorInfo,
       result,
     };
   }
@@ -156,7 +468,7 @@ async function saveTask(task) {
   try {
     const taskFile = path.join(TASKS_DIR, `${task.taskId}.json`);
     await fs.writeFile(taskFile, JSON.stringify(task, null, 2));
-    
+
     // 同时保存为"最近任务"
     const latestFile = path.join(TASKS_DIR, 'latest.json');
     await fs.writeFile(latestFile, JSON.stringify(task, null, 2));
@@ -187,7 +499,7 @@ async function getTaskHistory() {
   try {
     const files = await fs.readdir(TASKS_DIR);
     const tasks = [];
-    
+
     for (const file of files) {
       if (file.endsWith('.json') && file !== 'latest.json') {
         try {
@@ -196,10 +508,8 @@ async function getTaskHistory() {
         } catch (e) {}
       }
     }
-    
-    return tasks.sort((a, b) => 
-      new Date(b.startedAt) - new Date(a.startedAt)
-    );
+
+    return tasks.sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
   } catch (e) {
     return [];
   }
@@ -211,7 +521,7 @@ async function getTaskHistory() {
  */
 async function rollbackLatestTask() {
   const task = await getLatestTask();
-  
+
   if (!task) {
     return {
       success: false,
@@ -226,40 +536,49 @@ async function rollbackLatestTask() {
     };
   }
 
+  // 创建日志记录器
+  const logger = new OperationLogger(`${task.taskId}-rollback`);
+  await logger.info('开始撤销任务', { taskId: task.taskId });
+
   const rollbackResult = {
     taskId: task.taskId,
     successFiles: [],
     failedFiles: [],
     rolledbackAt: new Date().toISOString(),
+    logs: [],
   };
 
   // 反向移动文件（从新位置移回旧位置）
   for (const move of task.movedFiles) {
     try {
+      await logger.info(`准备撤销移动: ${move.target} -> ${move.source}`);
+
       // 检查文件是否还在目标位置
       try {
         await fs.access(move.target);
       } catch {
         // 文件已不存在，可能已被手动移动或删除
+        const reason = '文件已不在目标位置';
+        await logger.warn(`撤销跳过: ${move.originalName}`, { reason });
         rollbackResult.failedFiles.push({
           name: move.originalName,
           source: move.target,
           target: move.source,
-          reason: '文件已不在目标位置',
+          reason: reason,
         });
         continue;
       }
 
       // 检查原位置是否已有文件
+      let finalSource = move.source;
       try {
         await fs.access(move.source);
         // 原位置有文件，需要重命名
         const dir = path.dirname(move.source);
         const ext = path.extname(move.source);
         const baseName = path.basename(move.source, ext);
-        let finalSource = move.source;
         let counter = 1;
-        
+
         while (true) {
           try {
             await fs.access(finalSource);
@@ -269,32 +588,50 @@ async function rollbackLatestTask() {
             break;
           }
         }
-        
-        await fs.rename(move.target, finalSource);
+
+        await logger.info(`原位置有冲突，使用新名称: ${finalSource}`);
+
+        // 使用安全移动（支持跨卷回滚）
+        await safeMoveFile(move.target, finalSource, logger);
+
         rollbackResult.successFiles.push({
           name: move.originalName,
           from: move.target,
           to: finalSource,
           note: '原位置有冲突文件，已添加"恢复"标记',
+          method: 'rename-with-suffix',
         });
       } catch {
         // 原位置没有文件，可以直接移回
-        await fs.rename(move.target, move.source);
+        await safeMoveFile(move.target, finalSource, logger);
+
         rollbackResult.successFiles.push({
           name: move.originalName,
           from: move.target,
-          to: move.source,
+          to: finalSource,
+          method: 'rename',
         });
       }
     } catch (e) {
+      const errorInfo = classifyError(e);
+      await logger.error(`撤销移动失败: ${move.originalName}`, {
+        source: move.target,
+        target: move.source,
+        error: errorInfo,
+      });
+
       rollbackResult.failedFiles.push({
         name: move.originalName,
         source: move.target,
         target: move.source,
-        reason: e.message,
+        reason: errorInfo.userMessage,
+        errorCode: errorInfo.code,
+        errorCategory: errorInfo.category,
       });
     }
   }
+
+  rollbackResult.logs = logger.getLogs();
 
   // 更新任务状态为已撤销
   task.rolledback = true;
@@ -302,14 +639,19 @@ async function rollbackLatestTask() {
   task.rolledbackAt = rollbackResult.rolledbackAt;
   await saveTask(task);
 
+  await logger.info('撤销任务完成', {
+    successCount: rollbackResult.successFiles.length,
+    failedCount: rollbackResult.failedFiles.length,
+  });
+
   const allSuccess = rollbackResult.failedFiles.length === 0;
-  
+
   return {
     success: allSuccess,
     partial: !allSuccess && rollbackResult.successFiles.length > 0,
     result: rollbackResult,
-    message: allSuccess 
-      ? '撤销成功' 
+    message: allSuccess
+      ? '撤销成功'
       : `撤销部分成功：${rollbackResult.successFiles.length} 个文件恢复，${rollbackResult.failedFiles.length} 个文件失败`,
   };
 }
@@ -320,4 +662,7 @@ module.exports = {
   getTaskHistory,
   rollbackLatestTask,
   saveTask,
+  // 导出测试用
+  classifyError,
+  OperationLogger,
 };

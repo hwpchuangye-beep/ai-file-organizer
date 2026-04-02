@@ -12,7 +12,7 @@ export default function ExecuteConfirmPage() {
   }
 
   const handleExecute = () => {
-    const task = {
+    const task: import('@shared/types').OrganizationTask = {
       taskId: Date.now().toString(),
       targetPath: adjustedScheme.previewTree.path,
       createdFolders: adjustedScheme.suggestedFolders,
@@ -23,7 +23,7 @@ export default function ExecuteConfirmPage() {
       skippedFiles: [],
       failedFiles: [],
       startedAt: new Date(),
-      status: 'pending' as const,
+      status: 'pending',
     }
     setCurrentTask(task)
     navigate('/executing')

@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // 模型服务
   testModelConnection: (config) => ipcRenderer.invoke('test-model-connection', config),
+  getModels: (config) => ipcRenderer.invoke('get-models', config),
   generateSchemes: (scanResult, modelConfig) => ipcRenderer.invoke('generate-schemes', scanResult, modelConfig),
   
   // 执行服务

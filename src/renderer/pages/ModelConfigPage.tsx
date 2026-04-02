@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { Cpu, Cloud, CheckCircle, AlertCircle, ArrowRight, Info } from '../components/Icons'
+import { Cpu, Cloud, CheckCircle, AlertCircle, ArrowRight, Info, RefreshCw, Edit3 } from '../components/Icons'
 import type { ModelConfig } from '@shared/types'
 
 export default function ModelConfigPage() {
@@ -10,10 +10,39 @@ export default function ModelConfigPage() {
   
   const [mode, setMode] = useState<'local' | 'cloud'>(modelConfig?.mode || 'local')
   const [baseUrl, setBaseUrl] = useState(modelConfig?.baseUrl || 'http://127.0.0.1:1234')
-  const [modelName, setModelName] = useState(modelConfig?.modelName || 'qwen/qwen3-8b')
+  const [modelName, setModelName] = useState(modelConfig?.modelName || '')
   const [apiKey, setApiKey] = useState(modelConfig?.apiKey || '')
   const [isTesting, setIsTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
+  
+  // 模型列表状态
+  const [availableModels, setAvailableModels] = useState<string[]>([])
+  const [isLoadingModels, setIsLoadingModels] = useState(false)
+  const [manualInput, setManualInput] = useState(false)
+
+  // 组件加载时，如果有已保存的配置，尝试加载模型列表
+  useEffect(() => {
+    if (modelConfig?.isConnected && modelConfig.baseUrl) {
+      fetchModels(modelConfig.baseUrl, modelConfig.apiKey || '')
+    }
+  }, [])
+
+  const fetchModels = async (url: string, key: string) => {
+    setIsLoadingModels(true)
+    const result = await window.electronAPI!.getModels({
+      baseUrl: url.replace(/\/$/, ''),
+      apiKey: key,
+    })
+    if (result.success && result.models) {
+      setAvailableModels(result.models)
+      // 如果当前没有选中的模型，默认选第一个
+      if (!modelName && result.models.length > 0) {
+        setModelName(result.models[0])
+      }
+    }
+    setIsLoadingModels(false)
+    return result
+  }
 
   const handleTestConnection = async () => {
     setIsTesting(true)
@@ -24,10 +53,27 @@ export default function ModelConfigPage() {
       apiKey,
     }
 
-    // 使用真实的 IPC 调用
+    // 测试连接
     const result = await window.electronAPI!.testModelConnection(config)
     setTestResult(result)
+    
+    // 如果连接成功，自动获取模型列表
+    if (result.success && result.models) {
+      setAvailableModels(result.models)
+      // 优先保留已保存的模型，否则选第一个
+      const savedModel = modelConfig?.modelName
+      if (savedModel && result.models.includes(savedModel)) {
+        setModelName(savedModel)
+      } else if (result.models.length > 0) {
+        setModelName(result.models[0])
+      }
+    }
+    
     setIsTesting(false)
+  }
+
+  const handleRefreshModels = async () => {
+    await fetchModels(baseUrl, apiKey)
   }
 
   const handleSave = () => {
@@ -36,12 +82,15 @@ export default function ModelConfigPage() {
       baseUrl: baseUrl.replace(/\/$/, ''),
       modelName,
       apiKey,
-      isConnected: testResult?.success || false,
+      isConnected: testResult?.success || modelConfig?.isConnected || false,
       lastCheckedAt: new Date().toISOString(),
     }
     setModelConfig(config)
     navigate('/')
   }
+
+  // 是否有可用的模型列表
+  const hasModelList = availableModels.length > 0
 
   return (
     <div className="page-container">
@@ -89,19 +138,6 @@ export default function ModelConfigPage() {
           </p>
         </div>
 
-        <div style={{ marginBottom: '20px' }}>
-          <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, marginBottom: '8px' }}>
-            模型名称
-          </label>
-          <input
-            type="text"
-            className="input"
-            value={modelName}
-            onChange={(e) => setModelName(e.target.value)}
-            placeholder="qwen/qwen3-8b"
-          />
-        </div>
-
         {mode === 'cloud' && (
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', fontSize: '14px', fontWeight: 500, marginBottom: '8px' }}>
@@ -116,6 +152,110 @@ export default function ModelConfigPage() {
             />
           </div>
         )}
+
+        <div style={{ marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <label style={{ fontSize: '14px', fontWeight: 500 }}>
+              选择模型
+            </label>
+            {hasModelList && !manualInput && (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={handleRefreshModels}
+                  disabled={isLoadingModels}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '12px',
+                    color: '#007aff',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                    opacity: isLoadingModels ? 0.5 : 1,
+                  }}
+                >
+                  <RefreshCw size={12} style={{ animation: isLoadingModels ? 'spin 1s linear infinite' : undefined }} />
+                  刷新
+                </button>
+                <button
+                  onClick={() => setManualInput(true)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '12px',
+                    color: '#6e6e73',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
+                  }}
+                >
+                  <Edit3 size={12} />
+                  手动输入
+                </button>
+              </div>
+            )}
+            {manualInput && (
+              <button
+                onClick={() => setManualInput(false)}
+                style={{
+                  fontSize: '12px',
+                  color: '#007aff',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                }}
+              >
+                返回选择
+              </button>
+            )}
+          </div>
+          
+          {manualInput ? (
+            <input
+              type="text"
+              className="input"
+              value={modelName}
+              onChange={(e) => setModelName(e.target.value)}
+              placeholder="输入模型名称，如 qwen/qwen3-8b"
+            />
+          ) : (
+            <select
+              className="input"
+              value={modelName}
+              onChange={(e) => setModelName(e.target.value)}
+              disabled={!hasModelList}
+              style={{
+                cursor: hasModelList ? 'pointer' : 'not-allowed',
+                backgroundColor: hasModelList ? 'white' : '#f5f5f7',
+              }}
+            >
+              {!hasModelList && (
+                <option value="">
+                  {isLoadingModels ? '加载中...' : '请先测试连接获取模型列表'}
+                </option>
+              )}
+              {availableModels.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          )}
+          
+          {hasModelList && !manualInput && (
+            <p style={{ fontSize: '13px', color: '#6e6e73', marginTop: '6px' }}>
+              已获取 {availableModels.length} 个可用模型
+            </p>
+          )}
+        </div>
 
         <div
           style={{
@@ -169,13 +309,20 @@ export default function ModelConfigPage() {
           <button
             className="btn btn-primary"
             onClick={handleSave}
-            disabled={!testResult?.success}
+            disabled={!modelName}
           >
             <span>保存配置</span>
             <ArrowRight size={16} />
           </button>
         </div>
       </div>
+      
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   )
 }

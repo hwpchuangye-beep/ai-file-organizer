@@ -33,7 +33,12 @@ export default function SchemeRecommendPage() {
       }
 
       // 调用真实的模型服务
-      const result = await window.electronAPI!.generateSchemes(scanResult, modelConfig)
+      if (!window.electronAPI) {
+        setError('Electron API 未初始化')
+        setIsGenerating(false)
+        return
+      }
+      const result = await window.electronAPI.generateSchemes(scanResult, modelConfig)
       
       if (result.success && result.schemes) {
         setSchemes(result.schemes)
@@ -156,7 +161,7 @@ export default function SchemeRecommendPage() {
                     推荐
                   </span>
                 )}
-                {(scheme as any).source === 'fallback' && (
+                {scheme.source === 'fallback' && (
                   <span
                     style={{
                       padding: '4px 10px',
