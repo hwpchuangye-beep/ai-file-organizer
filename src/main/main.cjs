@@ -190,44 +190,18 @@ function createWindow() {
     const url = process.env.VITE_DEV_SERVER_URL;
     console.log('[Main] Loading dev server URL:', url);
     
-    // 先检查 Vite 是否就绪
-    const http = require('http');
-    let attempts = 0;
-    const maxAttempts = 10;
-    
-    const checkAndLoad = () => {
-      attempts++;
-      console.log(`[Main] Checking Vite server (attempt ${attempts}/${maxAttempts})...`);
-      
-      http.get(url, (res) => {
-        console.log(`[Main] Vite server responded with status: ${res.statusCode}`);
-        if (res.statusCode === 200) {
-          console.log('[Main] Vite is ready, loading page...');
-          mainWindow.loadURL(url).then(() => {
-            console.log('[Main] loadURL succeeded');
-          }).catch(err => {
-            console.error('[Main] loadURL FAILED:', err);
-          });
-        } else {
-          retry();
-        }
-      }).on('error', (err) => {
-        console.log(`[Main] Vite not ready yet: ${err.message}`);
-        retry();
-      });
-    };
-    
-    const retry = () => {
-      if (attempts < maxAttempts) {
-        setTimeout(checkAndLoad, 500);
-      } else {
-        console.error('[Main] Vite server did not respond after max attempts');
-        // 仍然尝试加载
+    // 直接加载，让 Electron 自己处理重试
+    console.log('[Main] Loading URL directly...');
+    mainWindow.loadURL(url).then(() => {
+      console.log('[Main] loadURL succeeded');
+    }).catch(err => {
+      console.error('[Main] loadURL FAILED:', err);
+      // 失败后再试一次
+      setTimeout(() => {
+        console.log('[Main] Retrying loadURL...');
         mainWindow.loadURL(url);
-      }
-    };
-    
-    checkAndLoad();
+      }, 1000);
+    });
     
   } else {
     const htmlPath = path.join(__dirname, '../renderer/index.html');

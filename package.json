@@ -6,7 +6,7 @@
   "scripts": {
     "dev:vite": "vite",
     "dev:electron": "npm run build:main && echo '[Main] Starting Electron...' && VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron src/main/main.cjs",
-    "dev": "concurrently --kill-others --names VITE,ELECTRON --prefix-colors cyan,magenta --handle-input \"npm run dev:vite\" \"sleep 3 && npm run dev:electron\"",
+    "dev": "concurrently --kill-others --names VITE,ELECTRON --prefix-colors cyan,magenta --handle-input \"npm run dev:vite\" \"sleep 5 && npm run dev:electron\"",
     "build": "vite build",
     "build:main": "mkdir -p dist/main/services && cp src/main/*.cjs dist/main/ && cp src/main/services/*.cjs dist/main/services/ && echo 'Main build complete' && ls -la dist/main/ && ls -la dist/main/services/",
     "electron:dev": "npm run build && electron .",
