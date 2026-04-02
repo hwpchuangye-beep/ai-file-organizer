@@ -1,94 +1,160 @@
+// Electron 主进程入口
+console.log('[Main] ========================================');
+console.log('[Main] app starting...');
+console.log('[Main] process.argv:', process.argv);
+console.log('[Main] process.cwd():', process.cwd());
+console.log('[Main] __dirname:', __dirname);
+console.log('[Main] process.platform:', process.platform);
+console.log('[Main] Electron version:', process.versions.electron);
+console.log('[Main] Node version:', process.versions.node);
+console.log('[Main] ========================================');
+
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
+console.log('[Main] Modules imported successfully');
+
+// 全局错误捕获
+process.on('uncaughtException', (error) => {
+  console.error('[Main] UNCAUGHT EXCEPTION:');
+  console.error(error);
+  console.error('[Main] Stack:', error.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[Main] UNHANDLED REJECTION at:', promise);
+  console.error('[Main] reason:', reason);
+});
+
 // 引入服务
-const modelService = require('./services/modelService.cjs');
-const executionService = require('./services/executionService.cjs');
+let modelService;
+let executionService;
+
+try {
+  modelService = require('./services/modelService.cjs');
+  executionService = require('./services/executionService.cjs');
+  console.log('[Main] Services loaded successfully');
+} catch (e) {
+  console.error('[Main] Failed to load services:', e.message);
+  console.error('[Main] Attempting fallback paths...');
+  
+  // 尝试其他路径
+  try {
+    modelService = require(path.join(__dirname, 'services', 'modelService.cjs'));
+    executionService = require(path.join(__dirname, 'services', 'executionService.cjs'));
+    console.log('[Main] Services loaded from absolute path');
+  } catch (e2) {
+    console.error('[Main] Failed to load services from all paths:', e2.message);
+    process.exit(1);
+  }
+}
 
 let mainWindow = null;
 
+// 获取 preload 路径
+function getPreloadPath() {
+  console.log('[Main] Resolving preload path...');
+  console.log('[Main] __dirname:', __dirname);
+  
+  const possiblePaths = [
+    path.join(__dirname, 'preload.cjs'),
+    path.join(process.cwd(), 'src', 'main', 'preload.cjs'),
+    path.join(process.cwd(), 'dist', 'main', 'preload.cjs'),
+  ];
+  
+  for (const p of possiblePaths) {
+    console.log('[Main] Checking:', p, fs.existsSync(p) ? 'EXISTS' : 'NOT FOUND');
+    if (fs.existsSync(p)) {
+      console.log('[Main] Using preload:', p);
+      return p;
+    }
+  }
+  
+  console.error('[Main] CRITICAL: preload.cjs not found in any location!');
+  return possiblePaths[0];
+}
+
 function createWindow() {
-  // 确定 preload 的绝对路径
-  // 使用 require.resolve 确保路径正确
-  let preloadPath;
+  console.log('[Main] createWindow() called');
+  
+  const preloadPath = getPreloadPath();
+  console.log('[Main] Preload path resolved to:', preloadPath);
+  
+  console.log('[Main] Creating BrowserWindow...');
+  
   try {
-    // 尝试相对于当前文件的路径
-    preloadPath = path.resolve(__dirname, 'preload.cjs');
+    mainWindow = new BrowserWindow({
+      width: 1200,
+      height: 800,
+      minWidth: 900,
+      minHeight: 600,
+      titleBarStyle: 'hiddenInset',
+      show: false,
+      webPreferences: {
+        preload: preloadPath,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+        allowRunningInsecureContent: false,
+        webSecurity: true,
+      },
+    });
     
-    // 如果文件不存在，尝试其他路径
-    if (!fs.existsSync(preloadPath)) {
-      // 尝试从项目根目录
-      preloadPath = path.resolve(process.cwd(), 'src', 'main', 'preload.cjs');
-    }
+    console.log('[Main] BrowserWindow created successfully');
+    console.log('[Main] Window ID:', mainWindow.id);
     
-    // 仍然不存在，尝试 dist 目录
-    if (!fs.existsSync(preloadPath)) {
-      preloadPath = path.resolve(process.cwd(), 'dist', 'main', 'preload.cjs');
-    }
-    
-    if (!fs.existsSync(preloadPath)) {
-      console.error('[Main] CRITICAL: preload.cjs not found at any location');
-      console.error('[Main] __dirname:', __dirname);
-      console.error('[Main] process.cwd():', process.cwd());
-    } else {
-      console.log('[Main] Preload path resolved to:', preloadPath);
-    }
   } catch (e) {
-    console.error('[Main] Error resolving preload path:', e);
-    preloadPath = path.join(__dirname, 'preload.cjs');
+    console.error('[Main] FAILED to create BrowserWindow:', e);
+    console.error('[Main] Stack:', e.stack);
+    return;
   }
 
-  console.log('[Main] Creating BrowserWindow...');
-  console.log('[Main] Preload path:', preloadPath);
-  
-  mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    minWidth: 900,
-    minHeight: 600,
-    titleBarStyle: 'hiddenInset',
-    show: false, // 先不显示，等加载完成
-    webPreferences: {
-      preload: preloadPath,
-      contextIsolation: true,  // 必须开启才能使用 contextBridge
-      nodeIntegration: false,  // 必须关闭以提高安全性
-      sandbox: false,          // 开发模式下关闭 sandbox 以便 preload 工作
-      allowRunningInsecureContent: false,
-      webSecurity: true,
-    },
-  });
-
-  // 等待窗口准备好再显示
+  // 窗口事件监听
   mainWindow.once('ready-to-show', () => {
-    console.log('[Main] Window ready to show');
+    console.log('[Main] Event: ready-to-show');
+    console.log('[Main] Showing window...');
     mainWindow.show();
     
-    // 打开 DevTools 便于调试（开发模式）
     if (process.env.VITE_DEV_SERVER_URL) {
+      console.log('[Main] Opening DevTools...');
       mainWindow.webContents.openDevTools();
     }
   });
 
-  // 监听页面加载完成
+  mainWindow.on('show', () => {
+    console.log('[Main] Event: window shown');
+  });
+
+  mainWindow.on('closed', () => {
+    console.log('[Main] Event: window closed');
+    mainWindow = null;
+  });
+
+  // 页面加载事件
+  mainWindow.webContents.on('did-start-loading', () => {
+    console.log('[Main] WebContents: did-start-loading');
+  });
+
   mainWindow.webContents.on('did-finish-load', () => {
-    console.log('[Main] Page finished loading');
+    console.log('[Main] WebContents: did-finish-load');
     
-    // 检查 window.electronAPI 是否可用
+    // 验证 electronAPI
     mainWindow.webContents.executeJavaScript(`
       (function() {
+        console.log('[Renderer] Checking window.electronAPI...');
         if (typeof window.electronAPI !== 'undefined' && window.electronAPI !== null) {
-          console.log('[Renderer] electronAPI is available');
-          return { success: true, methods: Object.keys(window.electronAPI) };
+          console.log('[Renderer] electronAPI is available, methods:', Object.keys(window.electronAPI).length);
+          return { success: true, methodCount: Object.keys(window.electronAPI).length };
         } else {
-          console.error('[Renderer] electronAPI is NOT available');
+          console.error('[Renderer] electronAPI is NOT available!');
           return { success: false, error: 'electronAPI not found' };
         }
       })()
     `).then(result => {
       if (result.success) {
-        console.log('[Main] electronAPI verified, methods:', result.methods.length);
+        console.log('[Main] electronAPI verified, methods:', result.methodCount);
       } else {
         console.error('[Main] electronAPI verification FAILED');
       }
@@ -97,47 +163,97 @@ function createWindow() {
     });
   });
 
-  // 监听控制台消息
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('[Main] WebContents: did-fail-load');
+    console.error('[Main] Error code:', errorCode);
+    console.error('[Main] Error description:', errorDescription);
+  });
+
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    console.error('[Main] WebContents: render-process-gone');
+    console.error('[Main] Details:', details);
+  });
+
+  mainWindow.webContents.on('crashed', (event, killed) => {
+    console.error('[Main] WebContents: crashed, killed:', killed);
+  });
+
+  // 控制台消息
   mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-    const prefix = ['debug', 'log', 'warn', 'error'][level] || 'log';
-    console.log(`[Renderer:${prefix}] ${message}`);
+    const levels = ['debug', 'log', 'warn', 'error'];
+    const levelName = levels[level] || 'log';
+    console.log(`[Renderer:${levelName}] ${message}`);
   });
 
   // 加载页面
   if (process.env.VITE_DEV_SERVER_URL) {
-    console.log('[Main] Loading dev server:', process.env.VITE_DEV_SERVER_URL);
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
+    const url = process.env.VITE_DEV_SERVER_URL;
+    console.log('[Main] Loading dev server URL:', url);
+    
+    mainWindow.loadURL(url).then(() => {
+      console.log('[Main] loadURL succeeded');
+    }).catch(err => {
+      console.error('[Main] loadURL FAILED:', err);
+    });
+    
   } else {
     const htmlPath = path.join(__dirname, '../renderer/index.html');
     console.log('[Main] Loading production file:', htmlPath);
-    mainWindow.loadFile(htmlPath);
+    console.log('[Main] File exists:', fs.existsSync(htmlPath));
+    
+    mainWindow.loadFile(htmlPath).then(() => {
+      console.log('[Main] loadFile succeeded');
+    }).catch(err => {
+      console.error('[Main] loadFile FAILED:', err);
+    });
   }
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+  
+  console.log('[Main] createWindow() completed');
 }
 
+// 应用生命周期
+console.log('[Main] Setting up app lifecycle handlers...');
+
 app.whenReady().then(() => {
-  console.log('[Main] Electron app ready');
+  console.log('[Main] ========================================');
+  console.log('[Main] app.whenReady() entered');
+  console.log('[Main] ========================================');
   createWindow();
+}).catch(err => {
+  console.error('[Main] app.whenReady() FAILED:', err);
 });
 
 app.on('window-all-closed', () => {
+  console.log('[Main] Event: window-all-closed');
   if (process.platform !== 'darwin') {
+    console.log('[Main] Quitting app (non-darwin platform)');
     app.quit();
+  } else {
+    console.log('[Main] Not quitting (darwin platform)');
   }
 });
 
 app.on('activate', () => {
+  console.log('[Main] Event: activate');
   if (mainWindow === null) {
+    console.log('[Main] Recreating window...');
     createWindow();
   }
 });
 
-// ========== IPC Handlers ==========
+app.on('quit', () => {
+  console.log('[Main] Event: quit');
+});
+
+app.on('before-quit', () => {
+  console.log('[Main] Event: before-quit');
+});
+
+// IPC Handlers
+console.log('[Main] Setting up IPC handlers...');
 
 ipcMain.handle('select-directory', async () => {
+  console.log('[Main] IPC: select-directory');
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ['openDirectory'],
   });
@@ -238,8 +354,10 @@ ipcMain.handle('repair-hidden-directories', async (_, targetPath) => {
   }
 });
 
-// ========== Helper Functions ==========
+console.log('[Main] IPC handlers setup complete');
+console.log('[Main] Waiting for app.whenReady()...');
 
+// Helper Functions
 async function scanDirectory(dirPath) {
   const files = [];
   
