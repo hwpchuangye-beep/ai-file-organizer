@@ -94,63 +94,90 @@ class OperationLogger {
 }
 
 /**
+ * 错误码映射：将系统错误码映射为 FailedFileErrorCode
+ */
+const errorCodeMapping = {
+  EEXIST: 'DUPLICATE_NAME',
+  EACCES: 'PERMISSION_DENIED',
+  EPERM: 'PERMISSION_DENIED',
+  ENOENT: 'SOURCE_NOT_FOUND',
+  EBUSY: 'FILE_LOCKED',
+  EXDEV: 'CROSS_VOLUME_MOVE',
+  ENOSPC: 'TARGET_DIR_CREATE_FAILED',
+  ENOTEMPTY: 'TARGET_DIR_CREATE_FAILED',
+  EISDIR: 'INVALID_PATH_CHARS',
+  ENOTDIR: 'INVALID_PATH_CHARS',
+  EINVAL: 'INVALID_PATH_CHARS',
+};
+
+/**
+ * 建议操作映射
+ */
+const suggestionMapping = {
+  DUPLICATE_NAME: '目标位置已存在同名文件，已自动重命名，如仍失败请手动处理',
+  PERMISSION_DENIED: '请检查文件/文件夹权限，或以管理员身份运行应用',
+  SOURCE_NOT_FOUND: '源文件可能已被删除或移动，请检查文件是否存在',
+  FILE_LOCKED: '文件正被其他程序使用，请关闭相关程序后重试',
+  CROSS_VOLUME_MOVE: '源文件和目标位置位于不同磁盘，应用已尝试复制方式移动',
+  INVALID_PATH_CHARS: '文件名包含非法字符或路径无效，请重命名文件后重试',
+  TARGET_DIR_CREATE_FAILED: '无法创建目标文件夹，请检查路径权限和磁盘空间',
+  UNKNOWN: '请检查错误详情，或尝试手动处理该文件',
+};
+
+/**
  * 错误分类器
  * @param {Error} error - 错误对象
  * @returns {Object} - 错误分类结果
  */
 function classifyError(error) {
   const code = error.code;
-  let category = 'UNKNOWN';
+  const systemCode = code || 'UNKNOWN';
+  const errorCode = errorCodeMapping[systemCode] || 'UNKNOWN';
   let userMessage = '未知错误';
 
   switch (code) {
     case 'EEXIST':
-      category = 'EEXIST';
       userMessage = '目标文件已存在（重名冲突）';
       break;
     case 'EACCES':
     case 'EPERM':
-      category = 'PERMISSION';
       userMessage = '权限不足，无法访问文件或目录';
       break;
     case 'ENOENT':
-      category = 'NOT_FOUND';
       userMessage = '源文件或目标路径不存在';
       break;
     case 'EBUSY':
-      category = 'BUSY';
       userMessage = '文件被其他程序占用';
       break;
     case 'EXDEV':
-      category = 'CROSS_DEVICE';
       userMessage = '跨卷移动需要复制操作';
       break;
     case 'ENOSPC':
-      category = 'NO_SPACE';
       userMessage = '磁盘空间不足';
       break;
     case 'ENOTEMPTY':
-      category = 'NOT_EMPTY';
       userMessage = '目录不为空';
       break;
     case 'EISDIR':
-      category = 'IS_DIRECTORY';
       userMessage = '目标是目录而非文件';
       break;
     case 'ENOTDIR':
-      category = 'NOT_DIRECTORY';
       userMessage = '目标路径不是目录';
       break;
+    case 'EINVAL':
+      userMessage = '无效的参数或路径';
+      break;
     default:
-      category = 'UNKNOWN';
       userMessage = error.message || '未知错误';
   }
 
   return {
-    code: code || 'UNKNOWN',
-    category,
+    code: systemCode,
+    errorCode,
+    category: errorCode,
     userMessage,
     originalError: error.message,
+    suggestion: suggestionMapping[errorCode],
   };
 }
 
@@ -323,18 +350,19 @@ async function executeTask(taskPayload) {
         const errorInfo = classifyError(e);
         await logger.error(`创建文件夹失败: ${folderName}`, errorInfo);
         result.failedFiles.push({
-          type: 'create_folder',
-          name: folderName,
-          error: errorInfo.userMessage,
-          errorCode: errorInfo.code,
-          errorCategory: errorInfo.category,
+          source: folderName,
+          target: path.join(targetPath, folderName),
+          reason: `创建文件夹失败: ${errorInfo.userMessage}`,
+          errorCode: errorInfo.errorCode,
+          suggestion: errorInfo.suggestion,
+          existsInSource: false,
         });
       }
     }
 
     await logger.info('文件夹创建阶段完成', {
       successCount: result.createdFolders.length,
-      failedCount: result.failedFiles.filter((f) => f.type === 'create_folder').length,
+      failedCount: result.failedFiles.filter((f) => f.errorCode === 'TARGET_DIR_CREATE_FAILED').length,
     });
 
     // 2. 移动文件
@@ -399,14 +427,22 @@ async function executeTask(taskPayload) {
           error: errorInfo,
         });
 
+        // 检查文件是否仍存在于原位置
+        let existsInSource = false;
+        try {
+          await fs.access(file.path);
+          existsInSource = true;
+        } catch {
+          existsInSource = false;
+        }
+
         result.failedFiles.push({
-          name: file.name,
           source: file.path,
           target: targetPathFull,
-          error: errorInfo.userMessage,
-          errorCode: errorInfo.code,
-          errorCategory: errorInfo.category,
-          originalError: errorInfo.originalError,
+          reason: errorInfo.userMessage,
+          errorCode: errorInfo.errorCode,
+          suggestion: errorInfo.suggestion,
+          existsInSource,
         });
       }
     }
@@ -414,7 +450,7 @@ async function executeTask(taskPayload) {
     await logger.info('文件移动阶段完成', {
       successCount: result.movedFiles.length,
       skippedCount: result.skippedFiles.length,
-      failedCount: result.failedFiles.filter((f) => !f.type).length,
+      failedCount: result.failedFiles.length,
     });
 
     result.status = 'completed';
