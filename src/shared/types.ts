@@ -76,6 +76,7 @@ export interface OrganizationTask {
   createdFolders: string[]
   movedFiles: { source: string; target: string }[]
   skippedFiles: string[]
+  failedFiles: string[]
   startedAt: Date
   finishedAt?: Date
   status: 'pending' | 'running' | 'completed' | 'failed'

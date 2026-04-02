@@ -27,7 +27,7 @@ export default function Layout({ children }: LayoutProps) {
             WebkitAppRegion: 'drag' as any,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', WebkitAppRegion: 'no-drag' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', WebkitAppRegion: 'no-drag' as any }}>
             <button
               onClick={() => navigate('/')}
               style={{

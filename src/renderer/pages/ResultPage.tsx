@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { CheckCircle, Folder, FileText, RefreshCw, Home, AlertCircle } from '../components/Icons'
+import type { IconProps } from '../components/Icons'
 
 export default function ResultPage() {
   const navigate = useNavigate()
@@ -19,7 +20,7 @@ export default function ResultPage() {
     setUndoResult(null)
     
     try {
-      const result = await window.electronAPI.rollbackLatestTask()
+      const result = await window.electronAPI!.rollbackLatestTask()
       setUndoResult({
         success: result.success,
         message: result.message || (result.success ? '撤销成功' : '撤销失败'),
@@ -127,7 +128,7 @@ export default function ResultPage() {
           onClick={handleUndo}
           disabled={isUndoing}
         >
-          <RefreshCw size={18} style={{ animation: isUndoing ? 'spin 1s linear infinite' : 'none' }} />
+          <RefreshCw size={18} spin={isUndoing} />
           <span>{isUndoing ? '撤销中...' : '撤销本次整理'}</span>
         </button>
         <button className="btn btn-primary" onClick={handleFinish}>

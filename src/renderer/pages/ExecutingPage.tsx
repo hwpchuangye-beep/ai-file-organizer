@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext'
 
 export default function ExecutingPage() {
   const navigate = useNavigate()
-  const { currentTask, adjustedScheme, scanResult, setCurrentTask, addToHistory } = useApp()
+  const { adjustedScheme, scanResult, setCurrentTask, addToHistory } = useApp()
   const [progress, setProgress] = useState(0)
   const [step, setStep] = useState('准备中...')
   const [error, setError] = useState<string | null>(null)

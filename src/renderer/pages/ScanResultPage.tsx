@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { Folder, ArrowRight, AlertCircle, Image, FileText, Download } from '../components/Icons'
+import { Folder, ArrowRight, Image, Download } from '../components/Icons'
 
 export default function ScanResultPage() {
   const navigate = useNavigate()
