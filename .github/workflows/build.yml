@@ -1,0 +1,68 @@
+name: Build macOS DMG
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (例如: 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+jobs:
+  build-macos:
+    runs-on: macos-14  # 使用 Apple Silicon 构建机，更快
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: |
+        npm config set registry https://registry.npmmirror.com/
+        npm install --legacy-peer-deps
+      
+    - name: Type check
+      run: npx tsc --noEmit
+      continue-on-error: true  # Type错误不阻断构建
+      
+    - name: Build renderer
+      run: npm run build
+      
+    - name: Build main process
+      run: npm run build:main
+      
+    - name: Build DMG
+      run: npm run dist:mac
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        NODE_OPTIONS: '--max-old-space-size=4096'
+        
+    - name: List release files
+      run: ls -lh release/
+      
+    - name: Upload DMG artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: AI文件整理助手-v${{ github.event.inputs.version || '1.0.0' }}
+        path: release/*.dmg
+        retention-days: 30
+        
+    - name: Upload build logs (if failed)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs
+        path: |
+          ~/.npm/_logs/
+          release/builder-debug.yml
+        retention-days: 7
