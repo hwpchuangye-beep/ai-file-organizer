@@ -186,7 +186,7 @@ export default function ModelConfigPage() {
                     opacity: isLoadingModels ? 0.5 : 1,
                   }}
                 >
-                  <RefreshCw size={12} style={{ animation: isLoadingModels ? 'spin 1s linear infinite' : undefined }} />
+                  <RefreshCw size={12} spin={isLoadingModels} />
                   刷新
                 </button>
                 <button
