@@ -71,7 +71,9 @@
       "icon": "assets/icon.icns",
       "identity": null,
       "hardenedRuntime": false,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "entitlements": "assets/entitlements.mac.plist",
+      "entitlementsInherit": "assets/entitlements.mac.plist"
     },
     "dmg": {
       "title": "AI文件整理助手安装",
