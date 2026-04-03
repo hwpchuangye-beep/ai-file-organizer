@@ -40,3 +40,6 @@
 [Renderer:log] [Preload] Exposed methods: selectDirectory, getDesktopPath, getDownloadsPath, scanDirectory, showInFolder, openFolder, testModelConnection, getModels, getLatestTask, getTaskHistory, rollbackLatestTask, buildDirectoryProfile, generateOrganizationSchemes, approveOrganizationScheme, executeApprovedScheme, resumeExecutionTask, getExecutionCheckpoint, verifyExecutionTask, getPreferenceMemory, savePreferenceMemory, updatePreferenceMemory, detectHiddenDirectories, generateRepairPreview, repairHiddenDirectories
 [Renderer:log] [Preload] Script completed
 [Main] Event: window shown
+[Main] Event: window shown
+[Main] Event: window shown
+[Main] Event: window shown
