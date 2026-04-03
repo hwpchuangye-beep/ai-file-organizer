@@ -1,1 +1,42 @@
-zsh:13: command not found: electron
+[Main] ========================================
+[Main] app starting...
+[Main] process.argv: [
+  '/Users/hewenpeng/Desktop/研发项目/大模型/ai-file-organizer/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron',
+  'src/main/main.cjs'
+]
+[Main] process.cwd(): /Users/hewenpeng/Desktop/研发项目/大模型/ai-file-organizer
+[Main] __dirname: /Users/hewenpeng/Desktop/研发项目/大模型/ai-file-organizer/src/main
+[Main] process.platform: darwin
+[Main] Electron version: 28.3.3
+[Main] Node version: 18.18.2
+[Main] ========================================
+[Main] Modules imported successfully
+[Main] Setting up app lifecycle handlers...
+[Main] Setting up IPC handlers...
+[Main] IPC handlers setup complete
+[Main] Waiting for app.whenReady()...
+[Main] ========================================
+[Main] app.whenReady() entered
+[Main] ========================================
+[Main] createWindow() called
+[Main] Resolving preload path...
+[Main] __dirname: /Users/hewenpeng/Desktop/研发项目/大模型/ai-file-organizer/src/main
+[Main] Checking: /Users/hewenpeng/Desktop/研发项目/大模型/ai-file-organizer/src/main/preload.cjs EXISTS
+[Main] Using preload: /Users/hewenpeng/Desktop/研发项目/大模型/ai-file-organizer/src/main/preload.cjs
+[Main] Preload path resolved to: /Users/hewenpeng/Desktop/研发项目/大模型/ai-file-organizer/src/main/preload.cjs
+[Main] Creating BrowserWindow...
+[Main] BrowserWindow created successfully
+[Main] Window ID: 1
+[Main] Loading dev server URL: http://127.0.0.1:5173
+[Main] Loading URL directly...
+[Main] WebContents: did-start-loading
+[Main] createWindow() completed
+[Main] Force showing window (ready-to-show timeout)
+[Main] Event: window shown
+[Main] Event: window shown
+[Renderer:log] [Preload] Script starting...
+[Renderer:log] [Preload] process.contextIsolated: true
+[Renderer:log] [Preload] API exposed via contextBridge
+[Renderer:log] [Preload] Exposed methods: selectDirectory, getDesktopPath, getDownloadsPath, scanDirectory, showInFolder, openFolder, testModelConnection, getModels, getLatestTask, getTaskHistory, rollbackLatestTask, buildDirectoryProfile, generateOrganizationSchemes, approveOrganizationScheme, executeApprovedScheme, resumeExecutionTask, getExecutionCheckpoint, verifyExecutionTask, getPreferenceMemory, savePreferenceMemory, updatePreferenceMemory, detectHiddenDirectories, generateRepairPreview, repairHiddenDirectories
+[Renderer:log] [Preload] Script completed
+[Main] Event: window shown
