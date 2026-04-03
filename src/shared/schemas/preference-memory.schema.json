@@ -1,0 +1,87 @@
+{
+  "$id": "preference-memory.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PreferenceMemory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["memoryId", "preferences"],
+  "properties": {
+    "memoryId": { "type": "string" },
+    "preferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "protectedDirectories": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "businessTypeOverrides": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["filePattern", "businessCategory"],
+            "properties": {
+              "filePattern": { "type": "string" },
+              "businessCategory": {
+                "type": "string",
+                "enum": ["运营", "产品", "客户", "调研", "财务", "学习", "项目", "设计"]
+              }
+            }
+          }
+        },
+        "sceneCategoryOverrides": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["filePattern", "sceneCategory"],
+            "properties": {
+              "filePattern": { "type": "string" },
+              "sceneCategory": {
+                "type": "string",
+                "enum": [
+                  "简历",
+                  "合同",
+                  "发票",
+                  "报销材料",
+                  "PRD",
+                  "会议纪要",
+                  "调研报告",
+                  "竞品分析",
+                  "作品集",
+                  "培训资料",
+                  "证件材料",
+                  "申请材料",
+                  "报价单",
+                  "需求文档",
+                  "软件安装包",
+                  "压缩包"
+                ]
+              }
+            }
+          }
+        },
+        "preferredSchemeByPath": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "schemeType"],
+            "properties": {
+              "path": { "type": "string" },
+              "schemeType": {
+                "type": "string",
+                "enum": ["business", "category", "business_category"]
+              }
+            }
+          }
+        },
+        "separateInstallerPackages": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    }
+  }
+}

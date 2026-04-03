@@ -1,0 +1,75 @@
+{
+  "$id": "execution-task.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExecutionTask",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "taskId",
+    "targetPath",
+    "schemeId",
+    "status",
+    "plannedMoveCount",
+    "createdAt"
+  ],
+  "properties": {
+    "taskId": { "type": "string" },
+    "targetPath": { "type": "string" },
+    "schemeId": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "running", "paused", "completed", "failed", "cancelled"]
+    },
+    "plannedMoveCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "completedMoveCount": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "failedMoveCount": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "skippedMoveCount": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "createdFolders": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "rollbackMap": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sourcePath", "targetPath"],
+        "properties": {
+          "sourcePath": { "type": "string" },
+          "targetPath": { "type": "string" }
+        }
+      }
+    },
+    "batchInfo": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "properties": {
+        "currentBatch": { "type": "integer", "minimum": 1 },
+        "totalBatches": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finishedAt": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    }
+  }
+}

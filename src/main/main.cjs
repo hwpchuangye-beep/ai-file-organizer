@@ -13,6 +13,7 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { exec } = require('child_process');
 
 console.log('[Main] Modules imported successfully');
 
@@ -31,27 +32,148 @@ process.on('unhandledRejection', (reason, promise) => {
 // 引入服务
 let modelService;
 let executionService;
+let profileService;
+let planningService;
+let verificationService;
+let schemaValidatorService;
+let ruleConstraintService;
+let memoryService;
+let servicesLoaded = false;
+let servicesLoadError = null;
 
-try {
-  modelService = require('./services/modelService.cjs');
-  executionService = require('./services/executionService.cjs');
-  console.log('[Main] Services loaded successfully');
-} catch (e) {
-  console.error('[Main] Failed to load services:', e.message);
-  console.error('[Main] Attempting fallback paths...');
-  
-  // 尝试其他路径
+function loadServices() {
+  if (servicesLoaded) return;
+  if (servicesLoadError) throw servicesLoadError;
+
+  try {
+    modelService = require('./services/modelService.cjs');
+    executionService = require('./services/executionService.cjs');
+    profileService = require('./services/profileService.cjs');
+    planningService = require('./services/planningService.cjs');
+    verificationService = require('./services/verificationService.cjs');
+    schemaValidatorService = require('./services/schemaValidatorService.cjs');
+    ruleConstraintService = require('./services/ruleConstraintService.cjs');
+    memoryService = require('./services/memoryService.cjs');
+    servicesLoaded = true;
+    console.log('[Main] Services loaded successfully');
+    return;
+  } catch (e) {
+    console.error('[Main] Failed to load services (relative):', e.message);
+  }
+
   try {
     modelService = require(path.join(__dirname, 'services', 'modelService.cjs'));
     executionService = require(path.join(__dirname, 'services', 'executionService.cjs'));
+    profileService = require(path.join(__dirname, 'services', 'profileService.cjs'));
+    planningService = require(path.join(__dirname, 'services', 'planningService.cjs'));
+    verificationService = require(path.join(__dirname, 'services', 'verificationService.cjs'));
+    schemaValidatorService = require(path.join(__dirname, 'services', 'schemaValidatorService.cjs'));
+    ruleConstraintService = require(path.join(__dirname, 'services', 'ruleConstraintService.cjs'));
+    memoryService = require(path.join(__dirname, 'services', 'memoryService.cjs'));
+    servicesLoaded = true;
     console.log('[Main] Services loaded from absolute path');
   } catch (e2) {
+    servicesLoadError = e2;
     console.error('[Main] Failed to load services from all paths:', e2.message);
-    process.exit(1);
+    throw e2;
+  }
+}
+
+function ensureServicesReady() {
+  try {
+    loadServices();
+    return null;
+  } catch (error) {
+    return {
+      success: false,
+      error: `服务初始化失败: ${error.message}`,
+    };
   }
 }
 
 let mainWindow = null;
+const profileStore = new Map();
+const schemeStore = new Map();
+const executionStore = new Map();
+const verificationStore = new Map();
+const watchedTargetStore = new Set();
+
+function isAbsolutePath(targetPath) {
+  return typeof targetPath === 'string' && path.isAbsolute(targetPath);
+}
+
+function normalizePath(targetPath) {
+  return path.resolve(targetPath);
+}
+
+function validateTargetAccess(targetPath, sourceType = 'user_selected') {
+  if (!isAbsolutePath(targetPath)) {
+    return { allowed: false, reason: '路径必须是绝对路径' };
+  }
+
+  const normalized = normalizePath(targetPath);
+  const desktopPath = normalizePath(path.join(os.homedir(), 'Desktop'));
+  const downloadsPath = normalizePath(path.join(os.homedir(), 'Downloads'));
+
+  if (sourceType === 'desktop') {
+    return normalized === desktopPath
+      ? { allowed: true }
+      : { allowed: false, reason: 'desktop 来源只能访问 Desktop 目录' };
+  }
+
+  if (sourceType === 'downloads') {
+    return normalized === downloadsPath
+      ? { allowed: true }
+      : { allowed: false, reason: 'downloads 来源只能访问 Downloads 目录' };
+  }
+
+  if (sourceType === 'watched') {
+    return watchedTargetStore.has(normalized)
+      ? { allowed: true }
+      : { allowed: false, reason: 'watched 来源目录未授权' };
+  }
+
+  // user_selected
+  return { allowed: true };
+}
+
+function validateSchemeGate({ scheme, profileEntry, targetPath }) {
+  const serviceError = ensureServicesReady();
+  if (serviceError) {
+    return {
+      valid: false,
+      error: serviceError.error,
+      validationErrors: [],
+      ruleErrors: [],
+    };
+  }
+
+  const schemaResult = schemaValidatorService.validateOrganizationScheme(scheme);
+  if (!schemaResult.valid) {
+    return {
+      valid: false,
+      error: '方案未通过 schema 校验',
+      validationErrors: schemaResult.errors,
+    };
+  }
+
+  const ruleResult = ruleConstraintService.validateOrganizationSchemeRules({
+    scheme,
+    profile: profileEntry?.profile,
+    files: profileEntry?.files || [],
+    targetRoot: targetPath,
+  });
+
+  if (!ruleResult.valid) {
+    return {
+      valid: false,
+      error: '方案未通过规则约束校验',
+      ruleErrors: ruleResult.errors,
+    };
+  }
+
+  return { valid: true };
+}
 
 // 获取 preload 路径
 function getPreloadPath() {
@@ -111,8 +233,16 @@ function createWindow() {
     return;
   }
 
+  const forceShowTimer = setTimeout(() => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      console.log('[Main] Force showing window (ready-to-show timeout)');
+      mainWindow.show();
+    }
+  }, 2500);
+
   // 窗口事件监听
   mainWindow.once('ready-to-show', () => {
+    clearTimeout(forceShowTimer);
     console.log('[Main] Event: ready-to-show');
     console.log('[Main] Showing window...');
     mainWindow.show();
@@ -128,6 +258,7 @@ function createWindow() {
   });
 
   mainWindow.on('closed', () => {
+    clearTimeout(forceShowTimer);
     console.log('[Main] Event: window closed');
     mainWindow = null;
   });
@@ -139,6 +270,10 @@ function createWindow() {
 
   mainWindow.webContents.on('did-finish-load', () => {
     console.log('[Main] WebContents: did-finish-load');
+    if (mainWindow && !mainWindow.isVisible()) {
+      console.log('[Main] Showing window after did-finish-load');
+      mainWindow.show();
+    }
     
     // 验证 electronAPI
     mainWindow.webContents.executeJavaScript(`
@@ -275,63 +410,532 @@ ipcMain.handle('get-downloads-path', () => {
   return path.join(os.homedir(), 'Downloads');
 });
 
-ipcMain.handle('scan-directory', async (_, dirPath) => {
+ipcMain.handle('build-directory-profile', async (_, payload = {}) => {
   try {
-    const files = await scanDirectory(dirPath);
-    return { success: true, files };
+    const serviceError = ensureServicesReady();
+    if (serviceError) return serviceError;
+
+    const { targetPath, sourceType = 'user_selected', watched = false } = payload;
+    const access = validateTargetAccess(targetPath, sourceType);
+    if (!access.allowed) {
+      return { success: false, error: access.reason };
+    }
+
+    const preferenceMemory = await memoryService.getPreferenceMemory();
+    const preferenceHits = memoryService.buildPreferenceHits(normalizePath(targetPath), preferenceMemory);
+
+    const result = await profileService.buildDirectoryProfile({
+      targetPath: normalizePath(targetPath),
+      sourceType,
+      watched,
+      preferenceHits,
+    });
+
+    profileStore.set(result.profile.profileId, {
+      profile: result.profile,
+      files: result.files,
+      createdAt: new Date().toISOString(),
+    });
+
+    if (watched) {
+      watchedTargetStore.add(normalizePath(targetPath));
+    }
+
+    return {
+      success: true,
+      profile: result.profile,
+    };
+  } catch (error) {
+    console.error('[Main] build-directory-profile error:', error);
+    return {
+      success: false,
+      error: error.message,
+      validationErrors: error.validationErrors || [],
+    };
+  }
+});
+
+ipcMain.handle('generate-organization-schemes', async (_, payload = {}) => {
+  try {
+    const serviceError = ensureServicesReady();
+    if (serviceError) return serviceError;
+
+    const { profileId, modelConfig } = payload;
+    const profileEntry = profileStore.get(profileId);
+    if (!profileEntry) {
+      return { success: false, error: '未找到目录画像，请先重新扫描' };
+    }
+
+    const preferenceMemory = await memoryService.getPreferenceMemory();
+    const startAt = Date.now();
+    console.log(
+      `[Main] generate-organization-schemes start profileId=${profileId} files=${profileEntry.files?.length || 0}`,
+    );
+    const PLANNING_TIMEOUT_MS = 120000;
+    const generated = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error('整理方案生成超时（120s），请减少目录范围后重试'));
+      }, PLANNING_TIMEOUT_MS);
+
+      planningService
+        .generateSchemes({
+          profile: profileEntry.profile,
+          files: profileEntry.files,
+          preferenceMemory,
+        })
+        .then((result) => {
+          clearTimeout(timer);
+          resolve(result);
+        })
+        .catch((error) => {
+          clearTimeout(timer);
+          reject(error);
+        });
+    });
+    console.log(
+      `[Main] generate-organization-schemes done profileId=${profileId} elapsedMs=${Date.now() - startAt}`,
+    );
+
+    let finalSchemes = generated.schemes || [];
+    let finalRecommendedSchemeId = generated.recommendedSchemeId || null;
+    let plannerSource = 'rules';
+    let plannerModel = null;
+    let plannerMessage = '规则引擎已完成方案推荐';
+
+    if (modelConfig?.baseUrl && modelConfig?.modelName && typeof modelService?.recommendOrganizationScheme === 'function') {
+      const modelDecision = await modelService.recommendOrganizationScheme({
+        profile: profileEntry.profile,
+        schemes: finalSchemes,
+        modelConfig,
+      });
+
+      if (modelDecision?.success && modelDecision.recommendedSchemeId) {
+        plannerSource = 'model';
+        plannerModel = modelDecision.modelName || modelConfig.modelName;
+        plannerMessage = modelDecision.reason || '模型已完成候选方案推荐决策';
+        console.log(`[Main] model recommendation applied model=${plannerModel} schemeId=${modelDecision.recommendedSchemeId}`);
+
+        const preferredId = modelDecision.recommendedSchemeId;
+        const preferred = finalSchemes.find((scheme) => scheme.schemeId === preferredId);
+        if (preferred) {
+          const others = finalSchemes.filter((scheme) => scheme.schemeId !== preferredId);
+          finalSchemes = [
+            { ...preferred, isRecommended: true },
+            ...others.map((scheme) => ({ ...scheme, isRecommended: false })),
+          ];
+          finalRecommendedSchemeId = preferredId;
+        }
+      } else {
+        plannerSource = 'rules';
+        plannerModel = modelConfig.modelName;
+        plannerMessage = modelDecision?.message || '模型推荐不可用，已回退规则引擎';
+        console.log(`[Main] model recommendation fallback to rules model=${plannerModel} message=${plannerMessage}`);
+      }
+    }
+
+    for (const scheme of finalSchemes) {
+      schemeStore.set(scheme.schemeId, {
+        scheme,
+        profileId,
+        targetPath: profileEntry.profile.target.path,
+        scannedCount: profileEntry.profile.scanStats.totalFiles,
+        approved: false,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    return {
+      success: true,
+      recommendedSchemeId: finalRecommendedSchemeId,
+      schemes: finalSchemes,
+      plannerSource,
+      plannerModel,
+      plannerMessage,
+    };
+  } catch (error) {
+    console.error('[Main] generate-organization-schemes error:', error);
+    return {
+      success: false,
+      error: error.message,
+      validationErrors: error.validationErrors || [],
+    };
+  }
+});
+
+ipcMain.handle('approve-organization-scheme', async (_, payload = {}) => {
+  try {
+    const serviceError = ensureServicesReady();
+    if (serviceError) return serviceError;
+
+    const { schemeId, schemeOverride } = payload;
+    const record = schemeStore.get(schemeId);
+    if (!record) {
+      return { success: false, error: '未找到整理方案' };
+    }
+
+    const profileEntry = profileStore.get(record.profileId);
+    if (!profileEntry) {
+      return { success: false, error: '未找到目录画像，无法审批方案' };
+    }
+
+    let candidateScheme = record.scheme;
+    if (schemeOverride) {
+      candidateScheme = schemeOverride;
+    }
+
+    const gate = validateSchemeGate({
+      scheme: candidateScheme,
+      profileEntry,
+      targetPath: record.targetPath,
+    });
+
+    if (!gate.valid) {
+      return {
+        success: false,
+        error: gate.error,
+        validationErrors: gate.validationErrors || [],
+        ruleErrors: gate.ruleErrors || [],
+      };
+    }
+
+    record.scheme = candidateScheme;
+    record.approved = true;
+    record.approvedAt = new Date().toISOString();
+    schemeStore.set(schemeId, record);
+
+    return { success: true, schemeId, scheme: record.scheme };
+  } catch (error) {
+    console.error('[Main] approve-organization-scheme error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('execute-approved-scheme', async (_, payload = {}) => {
+  try {
+    const serviceError = ensureServicesReady();
+    if (serviceError) return serviceError;
+
+    const { schemeId, taskId, batchSize, maxBatchesPerRun } = payload;
+    const record = schemeStore.get(schemeId);
+    if (!record) {
+      return { success: false, error: '未找到整理方案' };
+    }
+    if (!record.approved) {
+      return { success: false, error: '方案未审批，禁止执行' };
+    }
+
+    const profileEntry = profileStore.get(record.profileId);
+    if (!profileEntry) {
+      return { success: false, error: '未找到目录画像，禁止执行' };
+    }
+
+    const gate = validateSchemeGate({
+      scheme: record.scheme,
+      profileEntry,
+      targetPath: record.targetPath,
+    });
+
+    if (!gate.valid) {
+      return {
+        success: false,
+        error: gate.error,
+        validationErrors: gate.validationErrors || [],
+        ruleErrors: gate.ruleErrors || [],
+      };
+    }
+
+    const executeResult = await executionService.executeOrganizationScheme({
+      taskId,
+      targetPath: record.targetPath,
+      scheme: record.scheme,
+      scannedCount: record.scannedCount,
+      batchSize,
+      maxBatchesPerRun,
+    });
+
+    if (!executeResult.success) {
+      return { success: false, error: executeResult.error, task: executeResult.task, receipt: executeResult.receipt };
+    }
+
+    executionStore.set(executeResult.task.taskId, {
+      task: executeResult.task,
+      receipt: executeResult.receipt,
+      schemeId,
+      createdAt: new Date().toISOString(),
+    });
+
+    return {
+      success: true,
+      task: executeResult.task,
+      receipt: executeResult.receipt,
+      paused: Boolean(executeResult.paused),
+      hasRemaining: Boolean(executeResult.hasRemaining),
+    };
+  } catch (error) {
+    console.error('[Main] execute-approved-scheme error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('resume-execution-task', async (_, payload = {}) => {
+  try {
+    const serviceError = ensureServicesReady();
+    if (serviceError) return serviceError;
+
+    const { taskId, maxBatchesPerRun } = payload;
+    if (!taskId) {
+      return { success: false, error: '缺少 taskId' };
+    }
+
+    const resumeResult = await executionService.resumeExecutionTask({
+      taskId,
+      maxBatchesPerRun,
+    });
+
+    if (!resumeResult.success) {
+      return { success: false, error: resumeResult.error, task: resumeResult.task, receipt: resumeResult.receipt };
+    }
+
+    executionStore.set(resumeResult.task.taskId, {
+      task: resumeResult.task,
+      receipt: resumeResult.receipt,
+      schemeId: resumeResult.schemeId || null,
+      createdAt: new Date().toISOString(),
+    });
+
+    return {
+      success: true,
+      task: resumeResult.task,
+      receipt: resumeResult.receipt,
+      paused: Boolean(resumeResult.paused),
+      hasRemaining: Boolean(resumeResult.hasRemaining),
+    };
+  } catch (error) {
+    console.error('[Main] resume-execution-task error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-execution-checkpoint', async (_, payload = {}) => {
+  try {
+    const serviceError = ensureServicesReady();
+    if (serviceError) return serviceError;
+
+    const { taskId } = payload;
+    if (!taskId) {
+      return { success: false, error: '缺少 taskId' };
+    }
+    const checkpoint = await executionService.getExecutionCheckpoint(taskId);
+    return { success: true, checkpoint };
   } catch (error) {
     return { success: false, error: error.message };
   }
 });
 
+ipcMain.handle('get-preference-memory', async () => {
+  try {
+    const serviceError = ensureServicesReady();
+    if (serviceError) return serviceError;
+
+    const memory = await memoryService.getPreferenceMemory();
+    return { success: true, memory };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('save-preference-memory', async (_, payload = {}) => {
+  try {
+    const serviceError = ensureServicesReady();
+    if (serviceError) return serviceError;
+
+    const memory = await memoryService.savePreferenceMemory(payload.memory);
+    return { success: true, memory };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message,
+      validationErrors: error.validationErrors || [],
+    };
+  }
+});
+
+ipcMain.handle('update-preference-memory', async (_, payload = {}) => {
+  try {
+    const serviceError = ensureServicesReady();
+    if (serviceError) return serviceError;
+
+    const memory = await memoryService.updatePreferenceMemory(payload.patch || {});
+    return { success: true, memory };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message,
+      validationErrors: error.validationErrors || [],
+    };
+  }
+});
+
+ipcMain.handle('verify-execution-task', async (_, payload = {}) => {
+  try {
+    const serviceError = ensureServicesReady();
+    if (serviceError) return serviceError;
+
+    const { taskId } = payload;
+    const record = executionStore.get(taskId);
+    if (!record) {
+      return { success: false, error: '未找到执行任务' };
+    }
+
+    const report = await verificationService.verifyExecution({
+      task: record.task,
+      receipt: record.receipt,
+    });
+
+    verificationStore.set(taskId, report);
+
+    return {
+      success: true,
+      report,
+    };
+  } catch (error) {
+    console.error('[Main] verify-execution-task error:', error);
+    return {
+      success: false,
+      error: error.message,
+      validationErrors: error.validationErrors || [],
+    };
+  }
+});
+
+ipcMain.handle('scan-directory', async (_, dirPath, options = {}) => {
+  try {
+    const serviceError = ensureServicesReady();
+    if (serviceError) return serviceError;
+
+    const { projectProtection = true } = options;
+    
+    if (projectProtection) {
+      // 使用项目保护模式扫描
+      const scanResult = await executionService.scanWithProjectProtection(dirPath);
+      return { 
+        success: true, 
+        files: scanResult.files,
+        protectedProjects: scanResult.protectedProjects,
+        protectedFileCount: scanResult.protectedFileCount,
+        totalFiles: scanResult.totalFiles,
+      };
+    } else {
+      // 传统扫描模式（无保护）
+      const files = await scanDirectory(dirPath);
+      return { success: true, files };
+    }
+  } catch (error) {
+    console.error('[Main] scan-directory error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('test-model-connection', async (_, config) => {
+  const serviceError = ensureServicesReady();
+  if (serviceError) return serviceError;
   return await modelService.testConnection(config);
 });
 
 ipcMain.handle('get-models', async (_, config) => {
+  const serviceError = ensureServicesReady();
+  if (serviceError) return serviceError;
   return await modelService.getModels(config);
 });
 
 ipcMain.handle('generate-schemes', async (_, scanResult, modelConfig) => {
-  return await modelService.generateSchemes(scanResult, modelConfig);
+  return {
+    success: false,
+    error: 'Legacy generate-schemes is disabled. Use build-directory-profile + generate-organization-schemes.',
+  };
 });
 
 ipcMain.handle('execute-task', async (_, taskPayload) => {
-  return await executionService.executeTask(taskPayload);
+  // 后端门禁：禁止绕过审批直接执行
+  return {
+    success: false,
+    error: 'Direct execute-task is disabled. Use approve-organization-scheme + execute-approved-scheme.',
+  };
 });
 
 ipcMain.handle('get-latest-task', async () => {
+  const serviceError = ensureServicesReady();
+  if (serviceError) return serviceError;
   return await executionService.getLatestTask();
 });
 
 ipcMain.handle('get-task-history', async () => {
+  const serviceError = ensureServicesReady();
+  if (serviceError) return serviceError;
   return await executionService.getTaskHistory();
 });
 
 ipcMain.handle('rollback-latest-task', async () => {
+  const serviceError = ensureServicesReady();
+  if (serviceError) return serviceError;
   return await executionService.rollbackLatestTask();
 });
 
 ipcMain.handle('show-in-folder', async (_, filePath) => {
   try {
-    await shell.showItemInFolder(filePath);
-    return { success: true };
+    // 确保文件存在
+    if (!fs.existsSync(filePath)) {
+      return { success: false, error: '文件不存在: ' + filePath };
+    }
+    
+    // 使用 macOS 的 open -R 命令，在 Finder 中显示并选中文件
+    return new Promise((resolve) => {
+      exec(`open -R "${filePath}"`, (error) => {
+        if (error) {
+          console.error('[Main] show-in-folder error:', error);
+          resolve({ success: false, error: error.message });
+        } else {
+          console.log('[Main] show-in-folder success:', filePath);
+          resolve({ success: true });
+        }
+      });
+    });
   } catch (error) {
+    console.error('[Main] show-in-folder exception:', error);
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('open-folder', async (_, folderPath) => {
   try {
-    await shell.openPath(folderPath);
-    return { success: true };
+    // 确保路径存在
+    if (!fs.existsSync(folderPath)) {
+      return { success: false, error: '文件夹不存在: ' + folderPath };
+    }
+    
+    // 使用 macOS 的 open 命令，比 shell.openPath 更可靠
+    return new Promise((resolve) => {
+      exec(`open "${folderPath}"`, (error) => {
+        if (error) {
+          console.error('[Main] open-folder error:', error);
+          resolve({ success: false, error: error.message });
+        } else {
+          console.log('[Main] open-folder success:', folderPath);
+          resolve({ success: true });
+        }
+      });
+    });
   } catch (error) {
+    console.error('[Main] open-folder exception:', error);
     return { success: false, error: error.message };
   }
 });
 
 ipcMain.handle('detect-hidden-directories', async (_, targetPath) => {
   try {
+    const serviceError = ensureServicesReady();
+    if (serviceError) return serviceError;
+
     const hiddenDirs = await executionService.detectHiddenDirectories(targetPath);
     return { success: true, hiddenDirs };
   } catch (error) {
@@ -341,6 +945,9 @@ ipcMain.handle('detect-hidden-directories', async (_, targetPath) => {
 
 ipcMain.handle('generate-repair-preview', async (_, targetPath) => {
   try {
+    const serviceError = ensureServicesReady();
+    if (serviceError) return serviceError;
+
     const hiddenDirs = await executionService.detectHiddenDirectories(targetPath);
     if (hiddenDirs.length === 0) {
       return { success: true, preview: [], message: '未发现隐藏目录' };
@@ -354,6 +961,9 @@ ipcMain.handle('generate-repair-preview', async (_, targetPath) => {
 
 ipcMain.handle('repair-hidden-directories', async (_, targetPath) => {
   try {
+    const serviceError = ensureServicesReady();
+    if (serviceError) return serviceError;
+
     const result = await executionService.repairHiddenDirectories(targetPath);
     return { success: result.success, ...result };
   } catch (error) {

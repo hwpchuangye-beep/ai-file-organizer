@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 
 export default function HomePage() {
   const navigate = useNavigate()
-  const { modelConfig, setScanResult } = useApp()
+  const { modelConfig, setDirectoryProfile } = useApp()
   const [isScanning, setIsScanning] = useState(false)
   
   // Electron API 就绪检查
@@ -18,6 +18,7 @@ export default function HomePage() {
   const [isRepairing, setIsRepairing] = useState(false)
   const [repairResult, setRepairResult] = useState<any>(null)
   const [pendingScanPath, setPendingScanPath] = useState<string | null>(null)
+  const [pendingSourceType, setPendingSourceType] = useState<'desktop' | 'downloads' | 'user_selected' | 'watched'>('user_selected')
 
   // 等待 Electron API 就绪
   useEffect(() => {
@@ -59,28 +60,32 @@ export default function HomePage() {
   const handleCheckDesktop = async () => {
     if (!window.electronAPI) return
     const desktopPath = await window.electronAPI.getDesktopPath()
-    await checkAndScan(desktopPath)
+    await checkAndScan(desktopPath, 'desktop')
   }
 
   const handleCheckDownloads = async () => {
     if (!window.electronAPI) return
     const downloadsPath = await window.electronAPI.getDownloadsPath()
-    await checkAndScan(downloadsPath)
+    await checkAndScan(downloadsPath, 'downloads')
   }
 
   const handleSelectFolder = async () => {
     if (!window.electronAPI) return
     const selectedPath = await window.electronAPI.selectDirectory()
     if (selectedPath) {
-      await checkAndScan(selectedPath)
+      await checkAndScan(selectedPath, 'user_selected')
     }
   }
 
   // 检查隐藏目录并决定下一步
-  const checkAndScan = async (targetPath: string) => {
+  const checkAndScan = async (
+    targetPath: string,
+    sourceType: 'desktop' | 'downloads' | 'user_selected' | 'watched',
+  ) => {
     if (!window.electronAPI) return
     
     setPendingScanPath(targetPath)
+    setPendingSourceType(sourceType)
     
     // 先检测隐藏目录
     const previewResult = await window.electronAPI.generateRepairPreview(targetPath)
@@ -91,20 +96,22 @@ export default function HomePage() {
       setShowRepairModal(true)
     } else {
       // 没有隐藏目录，直接扫描
-      await performScan(targetPath)
+      await performScan(targetPath, sourceType)
     }
   }
 
   // 执行扫描
-  const performScan = async (targetPath: string) => {
+  const performScan = async (
+    targetPath: string,
+    sourceType: 'desktop' | 'downloads' | 'user_selected' | 'watched' = 'user_selected',
+  ) => {
     if (!window.electronAPI) return
     
     setIsScanning(true)
-    const result = await window.electronAPI.scanDirectory(targetPath)
+    const result = await window.electronAPI.buildDirectoryProfile({ targetPath, sourceType })
     
-    if (result.success) {
-      const scanResult = analyzeFiles(targetPath, result.files || [])
-      setScanResult(scanResult)
+    if (result.success && result.profile) {
+      setDirectoryProfile(result.profile)
       setIsScanning(false)
       navigate('/scan-result')
     } else {
@@ -127,7 +134,7 @@ export default function HomePage() {
         setShowRepairModal(false)
         setRepairPreview([])
         setRepairResult(null)
-        performScan(pendingScanPath)
+        performScan(pendingScanPath, pendingSourceType)
       }, 1500)
     }
   }
@@ -136,7 +143,7 @@ export default function HomePage() {
   const handleSkipRepair = () => {
     setShowRepairModal(false)
     if (pendingScanPath) {
-      performScan(pendingScanPath)
+      performScan(pendingScanPath, pendingSourceType)
     }
   }
 
@@ -146,6 +153,7 @@ export default function HomePage() {
     setRepairPreview([])
     setRepairResult(null)
     setPendingScanPath(null)
+    setPendingSourceType('user_selected')
   }
 
   const isConnected = modelConfig?.isConnected
@@ -685,44 +693,4 @@ function ActionCard({ icon, title, description, onClick, disabled }: ActionCardP
       <p style={{ fontSize: '14px', color: '#6e6e73', textAlign: 'center' }}>{description}</p>
     </button>
   )
-}
-
-function analyzeFiles(targetPath: string, files: any[]) {
-  const issueSummary = {
-    screenshotsCount: 0,
-    downloadsCount: 0,
-    similarFilesCount: 0,
-    scatteredProjectFiles: 0,
-    namingIssuesCount: 0,
-  }
-
-  const imageExts = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.heic']
-  const downloadExts = ['.zip', '.rar', '.7z', '.dmg', '.pkg', '.exe', '.msi']
-
-  files.forEach(file => {
-    if (imageExts.includes(file.extension)) {
-      issueSummary.screenshotsCount++
-    }
-    if (downloadExts.includes(file.extension)) {
-      issueSummary.downloadsCount++
-    }
-    if (/screenshot|截屏|屏幕截图/i.test(file.name)) {
-      issueSummary.screenshotsCount++
-    }
-  })
-
-  const issueTags: string[] = []
-  if (issueSummary.screenshotsCount > 5) issueTags.push('截图堆积')
-  if (issueSummary.downloadsCount > 5) issueTags.push('下载文件堆积')
-  if (files.length > 20) issueTags.push('文件数量较多')
-
-  return {
-    targetPath,
-    totalFiles: files.length,
-    analyzableFiles: files.length,
-    files,
-    issueSummary,
-    issueTags,
-    riskFlags: [],
-  }
 }

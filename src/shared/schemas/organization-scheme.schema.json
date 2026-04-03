@@ -1,0 +1,396 @@
+{
+  "$id": "organization-scheme.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OrganizationScheme",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemeId",
+    "schemeType",
+    "confidence",
+    "confidenceLevel",
+    "reasons",
+    "folders",
+    "moves",
+    "uncertainFiles",
+    "protectedItems"
+  ],
+  "properties": {
+    "schemeId": {
+      "type": "string"
+    },
+    "schemeType": {
+      "type": "string",
+      "enum": ["business", "category", "business_category"]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "confidenceLevel": {
+      "type": "string",
+      "enum": ["very_high", "high", "medium", "low", "very_low"]
+    },
+    "primaryBusinessCategory": {
+      "type": ["string", "null"],
+      "enum": ["运营", "产品", "客户", "调研", "财务", "学习", "项目", "设计", null]
+    },
+    "reasons": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "folders": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/FolderPlan" }
+    },
+    "moves": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/FileMovePlan" }
+    },
+    "uncertainFiles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/UncertainFile" }
+    },
+    "protectedItems": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ProtectedItem" }
+    },
+    "warnings": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "displayState": {
+      "type": "string",
+      "enum": ["actionable", "hold_safe", "empty_noop"]
+    },
+    "isRecommended": {
+      "type": "boolean"
+    },
+    "rankScore": {
+      "type": "number"
+    },
+    "uncertainExplanations": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "dedupGroupSize": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "decisionTrace": {
+      "$ref": "#/$defs/DecisionTrace"
+    }
+  },
+  "$defs": {
+    "FolderPlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["folderId", "displayName", "pathName", "folderType"],
+      "properties": {
+        "folderId": { "type": "string" },
+        "displayName": {
+          "type": "string",
+          "description": "给用户看的名称，如 表格、运营、待确认文件"
+        },
+        "pathName": {
+          "type": "string",
+          "description": "真实目录名，必须可见，禁止前导点",
+          "pattern": "^(?!\\.)(?!.*[\\\\/]).+$"
+        },
+        "folderType": {
+          "type": "string",
+          "enum": [
+            "business",
+            "scenario",
+            "category",
+            "business_category_parent",
+            "business_category_child",
+            "uncertain",
+            "other"
+          ]
+        },
+        "parentFolderId": {
+          "type": ["string", "null"]
+        },
+        "expectedFileCount": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "FileMovePlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fileId",
+        "fileName",
+        "sourcePath",
+        "targetFolderId",
+        "targetPath",
+        "reason",
+        "statusHint"
+      ],
+      "properties": {
+        "fileId": { "type": "string" },
+        "fileName": { "type": "string" },
+        "sourcePath": { "type": "string" },
+        "targetFolderId": { "type": "string" },
+        "targetPath": { "type": "string" },
+        "reason": { "type": "string" },
+        "statusHint": {
+          "type": "string",
+          "enum": ["planned", "protected", "uncertain", "skip"]
+        },
+        "sceneCategory": {
+          "type": ["string", "null"],
+          "enum": [
+            "简历",
+            "合同",
+            "发票",
+            "报销材料",
+            "PRD",
+            "会议纪要",
+            "调研报告",
+            "竞品分析",
+            "作品集",
+            "培训资料",
+            "证件材料",
+            "申请材料",
+            "报价单",
+            "需求文档",
+            "软件安装包",
+            "压缩包",
+            null
+          ]
+        },
+        "sceneKind": {
+          "type": "string",
+          "enum": ["semantic", "special_package"]
+        },
+        "sceneConfidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sceneEvidence": {
+          "$ref": "#/$defs/SceneEvidence"
+        },
+        "sceneAnalysisUsed": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["sceneCategory"],
+            "properties": {
+              "sceneCategory": {
+                "type": "string"
+              }
+            }
+          },
+          "then": {
+            "required": ["sceneKind", "sceneConfidence", "sceneEvidence", "sceneAnalysisUsed"]
+          }
+        },
+        {
+          "if": {
+            "required": ["sceneCategory"],
+            "properties": {
+              "sceneCategory": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["sceneKind"] },
+                { "required": ["sceneConfidence"] },
+                { "required": ["sceneEvidence"] },
+                { "required": ["sceneAnalysisUsed"] }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "UncertainFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "sourcePath", "reason"],
+      "properties": {
+        "fileName": { "type": "string" },
+        "sourcePath": { "type": "string" },
+        "reason": { "type": "string" },
+        "sceneCategory": {
+          "type": ["string", "null"],
+          "enum": [
+            "简历",
+            "合同",
+            "发票",
+            "报销材料",
+            "PRD",
+            "会议纪要",
+            "调研报告",
+            "竞品分析",
+            "作品集",
+            "培训资料",
+            "证件材料",
+            "申请材料",
+            "报价单",
+            "需求文档",
+            "软件安装包",
+            "压缩包",
+            null
+          ]
+        },
+        "sceneKind": {
+          "type": "string",
+          "enum": ["semantic", "special_package"]
+        },
+        "sceneConfidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sceneEvidence": {
+          "$ref": "#/$defs/SceneEvidence"
+        },
+        "sceneAnalysisUsed": {
+          "type": "boolean"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["sceneCategory"],
+            "properties": {
+              "sceneCategory": {
+                "type": "string"
+              }
+            }
+          },
+          "then": {
+            "required": ["sceneKind", "sceneConfidence", "sceneEvidence", "sceneAnalysisUsed"]
+          }
+        },
+        {
+          "if": {
+            "required": ["sceneCategory"],
+            "properties": {
+              "sceneCategory": {
+                "type": "null"
+              }
+            }
+          },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["sceneKind"] },
+                { "required": ["sceneConfidence"] },
+                { "required": ["sceneEvidence"] },
+                { "required": ["sceneAnalysisUsed"] }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "ProtectedItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "reason"],
+      "properties": {
+        "path": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+    "SceneEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "signals", "primaryReason"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["filename", "path_context", "cluster", "content_summary", "preference"]
+        },
+        "signals": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "signalCount": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "primaryReason": { "type": "string" }
+      }
+    },
+    "DecisionTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "entries"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["debug", "acceptance"]
+        },
+        "entries": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/DecisionTraceEntry" }
+        }
+      }
+    },
+    "DecisionTraceEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fileId",
+        "fileName",
+        "sourcePath",
+        "objectType",
+        "semanticLayer",
+        "namingSource",
+        "executionAction"
+      ],
+      "properties": {
+        "fileId": { "type": "string" },
+        "fileName": { "type": "string" },
+        "sourcePath": { "type": "string" },
+        "objectType": {
+          "type": "string",
+          "enum": [
+            "scenario_object",
+            "business_object",
+            "category_object",
+            "protected_object",
+            "uncertain_object"
+          ]
+        },
+        "semanticLayer": {
+          "type": "string",
+          "enum": ["scenario", "business", "category", "protected", "uncertain"]
+        },
+        "namingSource": {
+          "type": "string",
+          "enum": ["scenario", "business", "category", "fallback", "protected"]
+        },
+        "executionAction": {
+          "type": "string",
+          "enum": ["move", "keep", "protect"]
+        },
+        "downgradeReason": {
+          "type": ["string", "null"]
+        },
+        "targetFolderId": {
+          "type": ["string", "null"]
+        },
+        "targetPath": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}

@@ -53,9 +53,10 @@ export default function HistoryPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px', color: '#6e6e73' }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                         <Clock size={14} />
-                        {new Date(task.startedAt).toLocaleString()}
+                        {new Date(task.createdAt).toLocaleString()}
                       </span>
-                      <span>{task.movedFiles.length} 个文件</span>
+                      <span>{task.completedMoveCount || 0} 个成功</span>
+                      <span>{task.failedMoveCount || 0} 个失败</span>
                     </div>
                   </div>
                 </div>

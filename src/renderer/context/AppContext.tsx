@@ -1,37 +1,50 @@
 import React, { createContext, useContext, useState, useCallback } from 'react'
 import type {
   ModelConfig,
-  ScanResult,
+  DirectoryProfile,
   OrganizationScheme,
-  OrganizationTask,
+  ExecutionTask,
+  ExecutionReceipt,
+  VerificationReport,
 } from '@shared/types'
 
 interface AppState {
   modelConfig: ModelConfig | null
-  scanResult: ScanResult | null
+  directoryProfile: DirectoryProfile | null
+  schemes: OrganizationScheme[]
   selectedScheme: OrganizationScheme | null
   adjustedScheme: OrganizationScheme | null
-  currentTask: OrganizationTask | null
-  taskHistory: OrganizationTask[]
+  approvedSchemeId: string | null
+  currentTask: ExecutionTask | null
+  currentReceipt: ExecutionReceipt | null
+  verificationReport: VerificationReport | null
+  taskHistory: ExecutionTask[]
 }
 
 interface AppContextType extends AppState {
   setModelConfig: (config: ModelConfig) => void
-  setScanResult: (result: ScanResult) => void
+  setDirectoryProfile: (profile: DirectoryProfile) => void
+  setSchemes: (schemes: OrganizationScheme[]) => void
   setSelectedScheme: (scheme: OrganizationScheme) => void
   setAdjustedScheme: (scheme: OrganizationScheme) => void
-  setCurrentTask: (task: OrganizationTask) => void
-  addToHistory: (task: OrganizationTask) => void
-  clearCurrentTask: () => void
-  updateTaskStatus: (taskId: string, status: OrganizationTask['status']) => void
+  setApprovedSchemeId: (schemeId: string | null) => void
+  setCurrentTask: (task: ExecutionTask) => void
+  setCurrentReceipt: (receipt: ExecutionReceipt | null) => void
+  setVerificationReport: (report: VerificationReport | null) => void
+  addToHistory: (task: ExecutionTask) => void
+  clearExecutionState: () => void
 }
 
 const defaultState: AppState = {
   modelConfig: null,
-  scanResult: null,
+  directoryProfile: null,
+  schemes: [],
   selectedScheme: null,
   adjustedScheme: null,
+  approvedSchemeId: null,
   currentTask: null,
+  currentReceipt: null,
+  verificationReport: null,
   taskHistory: [],
 }
 
@@ -41,42 +54,55 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<AppState>(defaultState)
 
   const setModelConfig = useCallback((config: ModelConfig) => {
-    setState(prev => ({ ...prev, modelConfig: config }))
+    setState((prev) => ({ ...prev, modelConfig: config }))
   }, [])
 
-  const setScanResult = useCallback((result: ScanResult) => {
-    setState(prev => ({ ...prev, scanResult: result }))
+  const setDirectoryProfile = useCallback((profile: DirectoryProfile) => {
+    setState((prev) => ({ ...prev, directoryProfile: profile }))
+  }, [])
+
+  const setSchemes = useCallback((schemes: OrganizationScheme[]) => {
+    setState((prev) => ({ ...prev, schemes }))
   }, [])
 
   const setSelectedScheme = useCallback((scheme: OrganizationScheme) => {
-    setState(prev => ({ ...prev, selectedScheme: scheme }))
+    setState((prev) => ({ ...prev, selectedScheme: scheme }))
   }, [])
 
   const setAdjustedScheme = useCallback((scheme: OrganizationScheme) => {
-    setState(prev => ({ ...prev, adjustedScheme: scheme }))
+    setState((prev) => ({ ...prev, adjustedScheme: scheme }))
   }, [])
 
-  const setCurrentTask = useCallback((task: OrganizationTask) => {
-    setState(prev => ({ ...prev, currentTask: task }))
+  const setApprovedSchemeId = useCallback((schemeId: string | null) => {
+    setState((prev) => ({ ...prev, approvedSchemeId: schemeId }))
   }, [])
 
-  const addToHistory = useCallback((task: OrganizationTask) => {
-    setState(prev => ({
+  const setCurrentTask = useCallback((task: ExecutionTask) => {
+    setState((prev) => ({ ...prev, currentTask: task }))
+  }, [])
+
+  const setCurrentReceipt = useCallback((receipt: ExecutionReceipt | null) => {
+    setState((prev) => ({ ...prev, currentReceipt: receipt }))
+  }, [])
+
+  const setVerificationReport = useCallback((report: VerificationReport | null) => {
+    setState((prev) => ({ ...prev, verificationReport: report }))
+  }, [])
+
+  const addToHistory = useCallback((task: ExecutionTask) => {
+    setState((prev) => ({
       ...prev,
       taskHistory: [task, ...prev.taskHistory].slice(0, 50),
     }))
   }, [])
 
-  const clearCurrentTask = useCallback(() => {
-    setState(prev => ({ ...prev, currentTask: null }))
-  }, [])
-
-  const updateTaskStatus = useCallback((taskId: string, status: OrganizationTask['status']) => {
-    setState(prev => ({
+  const clearExecutionState = useCallback(() => {
+    setState((prev) => ({
       ...prev,
-      taskHistory: prev.taskHistory.map(t =>
-        t.taskId === taskId ? { ...t, status } : t
-      ),
+      approvedSchemeId: null,
+      currentTask: null,
+      currentReceipt: null,
+      verificationReport: null,
     }))
   }, [])
 
@@ -85,13 +111,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       value={{
         ...state,
         setModelConfig,
-        setScanResult,
+        setDirectoryProfile,
+        setSchemes,
         setSelectedScheme,
         setAdjustedScheme,
+        setApprovedSchemeId,
         setCurrentTask,
+        setCurrentReceipt,
+        setVerificationReport,
         addToHistory,
-        clearCurrentTask,
-        updateTaskStatus,
+        clearExecutionState,
       }}
     >
       {children}

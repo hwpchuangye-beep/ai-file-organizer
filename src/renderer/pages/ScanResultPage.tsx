@@ -1,47 +1,65 @@
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { Folder, ArrowRight, Image, Download } from '../components/Icons'
+import { useEffect } from 'react'
+
+const CATEGORY_LABELS: Record<string, string> = {
+  table: '表格',
+  document: '文档',
+  image: '图片',
+  presentation: '演示',
+  mindmap: '脑图',
+  archive: '压缩包',
+  installer: '安装包',
+  audio: '音频',
+  video: '视频',
+  code: '代码',
+  other: '其他',
+}
 
 export default function ScanResultPage() {
   const navigate = useNavigate()
-  const { scanResult } = useApp()
+  const { directoryProfile } = useApp()
 
-  if (!scanResult) {
-    navigate('/')
-    return null
-  }
+  useEffect(() => {
+    if (!directoryProfile) {
+      navigate('/', { replace: true })
+    }
+  }, [directoryProfile, navigate])
 
-  const { targetPath, totalFiles, issueSummary, issueTags, files } = scanResult
+  if (!directoryProfile) return null
 
-  const folderName = targetPath.split('/').pop() || targetPath
+  const { target, scanStats, summary, typeDistribution, protectedItems, hiddenDirectoryCandidates } = directoryProfile
+  const imageCount = typeDistribution.find((item) => item.category === 'image')?.count || 0
+  const installerOrArchive = (typeDistribution.find((item) => item.category === 'installer')?.count || 0)
+    + (typeDistribution.find((item) => item.category === 'archive')?.count || 0)
+
+  const tags: string[] = []
+  if (imageCount > 5) tags.push('图片堆积')
+  if (installerOrArchive > 5) tags.push('安装包/压缩包堆积')
+  if ((hiddenDirectoryCandidates || []).length > 0) tags.push('存在历史隐藏目录')
+  if (protectedItems.length > 0) tags.push(`保护 ${protectedItems.length} 个项目目录`)
 
   return (
     <div className="page-container">
       <h1 className="page-title">扫描结果</h1>
-      <p className="page-subtitle">已分析 {folderName} 目录，发现以下情况</p>
+      <p className="page-subtitle">已分析 {target.displayName}，完成目录画像</p>
 
       <div className="grid grid-3" style={{ marginBottom: '32px' }}>
-        <StatCard
-          icon={<Folder size={24} color="#007aff" />}
-          value={totalFiles}
-          label="文件总数"
-        />
-        <StatCard
-          icon={<Image size={24} color="#34c759" />}
-          value={issueSummary.screenshotsCount}
-          label="图片/截图"
-        />
-        <StatCard
-          icon={<Download size={24} color="#5856d6" />}
-          value={issueSummary.downloadsCount}
-          label="下载文件"
-        />
+        <StatCard icon={<Folder size={24} color="#007aff" />} value={scanStats.totalFiles} label="总文件数" />
+        <StatCard icon={<Image size={24} color="#34c759" />} value={imageCount} label="图片文件" />
+        <StatCard icon={<Download size={24} color="#5856d6" />} value={installerOrArchive} label="安装/压缩" />
       </div>
 
       <div className="card" style={{ marginBottom: '24px' }}>
-        <h3 style={{ fontSize: '17px', fontWeight: 600, marginBottom: '16px' }}>问题摘要</h3>
+        <h3 style={{ fontSize: '17px', fontWeight: 600, marginBottom: '12px' }}>目录摘要</h3>
+        <p style={{ fontSize: '14px', color: '#6e6e73', marginBottom: '16px' }}>
+          类型: {summary.directoryType} · 复杂度: {summary.estimatedComplexity} · 推荐策略: {summary.recommendedStrategyHint}
+        </p>
+
+        <h3 style={{ fontSize: '17px', fontWeight: 600, marginBottom: '12px' }}>风险标签</h3>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
-          {issueTags.map((tag, index) => (
+          {tags.map((tag, index) => (
             <span
               key={index}
               style={{
@@ -56,13 +74,30 @@ export default function ScanResultPage() {
               {tag}
             </span>
           ))}
-          {issueTags.length === 0 && (
-            <span style={{ fontSize: '14px', color: '#6e6e73' }}>未发现明显问题</span>
+          {tags.length === 0 && (
+            <span style={{ fontSize: '14px', color: '#6e6e73' }}>未发现高风险项</span>
           )}
         </div>
 
-        <h3 style={{ fontSize: '17px', fontWeight: 600, marginBottom: '12px' }}>文件类型分布</h3>
-        <FileTypeList files={files} />
+        <h3 style={{ fontSize: '17px', fontWeight: 600, marginBottom: '12px' }}>类型分布</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+          {typeDistribution.map((item) => (
+            <div
+              key={item.category}
+              style={{
+                padding: '12px',
+                background: '#f5f5f7',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <span style={{ fontSize: '14px', fontWeight: 500 }}>{CATEGORY_LABELS[item.category] || item.category}</span>
+              <span style={{ fontSize: '13px', color: '#6e6e73' }}>{item.count}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
@@ -70,7 +105,7 @@ export default function ScanResultPage() {
           重新选择目录
         </button>
         <button className="btn btn-primary" onClick={() => navigate('/scheme-recommend')}>
-          <span>查看推荐方案</span>
+          <span>生成整理方案</span>
           <ArrowRight size={18} />
         </button>
       </div>
@@ -84,39 +119,6 @@ function StatCard({ icon, value, label }: { icon: React.ReactNode; value: number
       <div style={{ marginBottom: '12px' }}>{icon}</div>
       <div style={{ fontSize: '32px', fontWeight: 700, marginBottom: '4px' }}>{value}</div>
       <div style={{ fontSize: '14px', color: '#6e6e73' }}>{label}</div>
-    </div>
-  )
-}
-
-function FileTypeList({ files }: { files: any[] }) {
-  const typeCount: Record<string, number> = {}
-  files.forEach(file => {
-    const type = file.extension || '其他'
-    typeCount[type] = (typeCount[type] || 0) + 1
-  })
-
-  const sortedTypes = Object.entries(typeCount)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
-
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
-      {sortedTypes.map(([type, count]) => (
-        <div
-          key={type}
-          style={{
-            padding: '12px',
-            background: '#f5f5f7',
-            borderRadius: '8px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <span style={{ fontSize: '14px', fontWeight: 500 }}>{type || '无扩展名'}</span>
-          <span style={{ fontSize: '13px', color: '#6e6e73' }}>{count}</span>
-        </div>
-      ))}
     </div>
   )
 }

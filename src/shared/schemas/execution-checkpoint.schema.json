@@ -1,0 +1,38 @@
+{
+  "$id": "execution-checkpoint.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExecutionCheckpoint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "taskId",
+    "schemeId",
+    "targetPath",
+    "scannedCount",
+    "batchSize",
+    "totalBatches",
+    "nextPlannedIndex",
+    "nonPlannedRecorded",
+    "uncertainFilesRecorded",
+    "task",
+    "receipt",
+    "scheme",
+    "updatedAt"
+  ],
+  "properties": {
+    "taskId": { "type": "string" },
+    "schemeId": { "type": "string" },
+    "targetPath": { "type": "string" },
+    "scannedCount": { "type": "integer", "minimum": 0 },
+    "batchSize": { "type": "integer", "minimum": 1 },
+    "totalBatches": { "type": "integer", "minimum": 1 },
+    "nextPlannedIndex": { "type": "integer", "minimum": 0 },
+    "nonPlannedRecorded": { "type": "boolean" },
+    "uncertainFilesRecorded": { "type": "boolean" },
+    "task": { "$ref": "execution-task.schema.json" },
+    "receipt": { "$ref": "execution-receipt.schema.json" },
+    "scheme": { "$ref": "organization-scheme.schema.json" },
+    "updatedAt": { "type": "string", "format": "date-time" }
+  }
+}
+

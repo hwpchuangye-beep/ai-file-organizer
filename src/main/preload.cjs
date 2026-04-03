@@ -13,7 +13,7 @@ try {
     selectDirectory: () => ipcRenderer.invoke('select-directory'),
     getDesktopPath: () => ipcRenderer.invoke('get-desktop-path'),
     getDownloadsPath: () => ipcRenderer.invoke('get-downloads-path'),
-    scanDirectory: (path) => ipcRenderer.invoke('scan-directory', path),
+    scanDirectory: (path, options) => ipcRenderer.invoke('scan-directory', path, options),
     
     // 文件定位
     showInFolder: (filePath) => ipcRenderer.invoke('show-in-folder', filePath),
@@ -22,13 +22,25 @@ try {
     // 模型服务
     testModelConnection: (config) => ipcRenderer.invoke('test-model-connection', config),
     getModels: (config) => ipcRenderer.invoke('get-models', config),
-    generateSchemes: (scanResult, modelConfig) => ipcRenderer.invoke('generate-schemes', scanResult, modelConfig),
     
-    // 执行服务
-    executeTask: (taskPayload) => ipcRenderer.invoke('execute-task', taskPayload),
+    // 执行服务（仅保留受控查询/回滚接口）
     getLatestTask: () => ipcRenderer.invoke('get-latest-task'),
     getTaskHistory: () => ipcRenderer.invoke('get-task-history'),
     rollbackLatestTask: () => ipcRenderer.invoke('rollback-latest-task'),
+
+    // Skill V2: 画像 -> 规划 -> 审批 -> 执行 -> 验证
+    buildDirectoryProfile: (payload) => ipcRenderer.invoke('build-directory-profile', payload),
+    generateOrganizationSchemes: (payload) => ipcRenderer.invoke('generate-organization-schemes', payload),
+    approveOrganizationScheme: (payload) => ipcRenderer.invoke('approve-organization-scheme', payload),
+    executeApprovedScheme: (payload) => ipcRenderer.invoke('execute-approved-scheme', payload),
+    resumeExecutionTask: (payload) => ipcRenderer.invoke('resume-execution-task', payload),
+    getExecutionCheckpoint: (payload) => ipcRenderer.invoke('get-execution-checkpoint', payload),
+    verifyExecutionTask: (payload) => ipcRenderer.invoke('verify-execution-task', payload),
+
+    // 偏好记忆（最小版）
+    getPreferenceMemory: () => ipcRenderer.invoke('get-preference-memory'),
+    savePreferenceMemory: (payload) => ipcRenderer.invoke('save-preference-memory', payload),
+    updatePreferenceMemory: (payload) => ipcRenderer.invoke('update-preference-memory', payload),
     
     // 隐藏目录检测与修复
     detectHiddenDirectories: (targetPath) => ipcRenderer.invoke('detect-hidden-directories', targetPath),

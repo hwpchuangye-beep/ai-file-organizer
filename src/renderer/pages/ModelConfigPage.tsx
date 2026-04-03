@@ -19,6 +19,7 @@ export default function ModelConfigPage() {
   const [availableModels, setAvailableModels] = useState<string[]>([])
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [manualInput, setManualInput] = useState(false)
+  const [lastFetchedEndpointKey, setLastFetchedEndpointKey] = useState('')
 
   // 组件加载时，如果有已保存的配置，尝试加载模型列表
   useEffect(() => {
@@ -33,12 +34,15 @@ export default function ModelConfigPage() {
       setIsLoadingModels(false)
       return { success: false, message: 'Electron API 未初始化' }
     }
+    const normalizedUrl = url.replace(/\/$/, '')
+    const endpointKey = `${mode}|${normalizedUrl}|${mode === 'cloud' ? key : ''}`
     const result = await window.electronAPI.getModels({
-      baseUrl: url.replace(/\/$/, ''),
+      baseUrl: normalizedUrl,
       apiKey: key,
     })
     if (result.success && result.models) {
       setAvailableModels(result.models)
+      setLastFetchedEndpointKey(endpointKey)
       // 如果当前没有选中的模型，默认选第一个
       if (!modelName && result.models.length > 0) {
         setModelName(result.models[0])
@@ -65,10 +69,14 @@ export default function ModelConfigPage() {
     }
     const result = await window.electronAPI.testModelConnection(config)
     setTestResult(result)
+    if (result.success) {
+      setLastFetchedEndpointKey(`${mode}|${config.baseUrl}|${mode === 'cloud' ? apiKey : ''}`)
+    }
     
     // 如果连接成功，自动获取模型列表
     if (result.success && result.models) {
       setAvailableModels(result.models)
+      setLastFetchedEndpointKey(currentEndpointKey(mode, baseUrl, apiKey))
       // 优先保留已保存的模型，否则选第一个
       const savedModel = modelConfig?.modelName
       if (savedModel && result.models.includes(savedModel)) {
@@ -86,12 +94,23 @@ export default function ModelConfigPage() {
   }
 
   const handleSave = () => {
+    const normalizedBaseUrl = baseUrl.replace(/\/$/, '')
+    const currentEndpointKey = `${mode}|${normalizedBaseUrl}|${mode === 'cloud' ? apiKey : ''}`
+    const savedEndpointKey = modelConfig
+      ? `${modelConfig.mode}|${modelConfig.baseUrl.replace(/\/$/, '')}|${modelConfig.mode === 'cloud' ? (modelConfig.apiKey || '') : ''}`
+      : ''
+
+    const connectionVerifiedForCurrentEndpoint =
+      (testResult?.success === true) ||
+      (lastFetchedEndpointKey === currentEndpointKey && availableModels.length > 0) ||
+      (savedEndpointKey === currentEndpointKey && modelConfig?.isConnected === true)
+
     const config: ModelConfig = {
       mode,
-      baseUrl: baseUrl.replace(/\/$/, ''),
+      baseUrl: normalizedBaseUrl,
       modelName,
       apiKey,
-      isConnected: testResult?.success || modelConfig?.isConnected || false,
+      isConnected: connectionVerifiedForCurrentEndpoint,
       lastCheckedAt: new Date().toISOString(),
     }
     setModelConfig(config)
@@ -100,6 +119,11 @@ export default function ModelConfigPage() {
 
   // 是否有可用的模型列表
   const hasModelList = availableModels.length > 0
+
+  function currentEndpointKey(modeValue: 'local' | 'cloud', urlValue: string, keyValue: string) {
+    const normalizedUrl = urlValue.replace(/\/$/, '')
+    return `${modeValue}|${normalizedUrl}|${modeValue === 'cloud' ? keyValue : ''}`
+  }
 
   return (
     <div className="page-container">
@@ -143,7 +167,7 @@ export default function ModelConfigPage() {
           <p style={{ fontSize: '13px', color: '#6e6e73', marginTop: '6px' }}>
             {mode === 'local' 
               ? '支持: http://127.0.0.1:1234, http://localhost:1234, http://192.168.x.x:1234'
-              : '填写云端模型服务的完整 API 地址'}
+              : '填写云端模型服务地址，支持 https://host 或 https://host/v1'}
           </p>
         </div>
 

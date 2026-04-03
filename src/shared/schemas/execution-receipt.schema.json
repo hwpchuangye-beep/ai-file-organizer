@@ -1,0 +1,109 @@
+{
+  "$id": "execution-receipt.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExecutionReceipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["taskId", "schemeId", "targetPath", "summary", "createdAt"],
+  "properties": {
+    "taskId": { "type": "string" },
+    "schemeId": { "type": "string" },
+    "targetPath": { "type": "string" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plannedCount", "executedCount", "successCount", "failedCount", "skippedCount"],
+      "properties": {
+        "plannedCount": { "type": "integer", "minimum": 0 },
+        "executedCount": { "type": "integer", "minimum": 0 },
+        "successCount": { "type": "integer", "minimum": 0 },
+        "failedCount": { "type": "integer", "minimum": 0 },
+        "skippedCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "createdFolders": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "moves": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fileId", "fileName", "sourcePath", "targetPath", "status"],
+        "properties": {
+          "fileId": { "type": "string" },
+          "fileName": { "type": "string" },
+          "sourcePath": { "type": "string" },
+          "targetPath": { "type": "string" },
+          "status": { "type": "string", "enum": ["success", "failed", "skipped"] },
+          "targetFolderName": { "type": "string" },
+          "reason": { "type": "string" },
+          "errorCode": { "type": "string" },
+          "errorMessage": { "type": "string" },
+          "stillAtOriginalPath": { "type": "boolean" },
+          "sceneCategory": {
+            "type": ["string", "null"],
+            "enum": [
+              "简历",
+              "合同",
+              "发票",
+              "报销材料",
+              "PRD",
+              "会议纪要",
+              "调研报告",
+              "竞品分析",
+              "作品集",
+              "培训资料",
+              "证件材料",
+              "申请材料",
+              "报价单",
+              "需求文档",
+              "软件安装包",
+              "压缩包",
+              null
+            ]
+          },
+          "sceneKind": {
+            "type": "string",
+            "enum": ["semantic", "special_package"]
+          },
+          "sceneConfidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "sceneEvidence": { "$ref": "#/$defs/SceneEvidence" },
+          "sceneAnalysisUsed": { "type": "boolean" }
+        }
+      }
+    },
+    "scannedCount": { "type": "integer", "minimum": 0 },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "finishedAt": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "$defs": {
+    "SceneEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "signals", "primaryReason"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["filename", "path_context", "cluster", "content_summary", "preference"]
+        },
+        "signals": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "signalCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "primaryReason": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

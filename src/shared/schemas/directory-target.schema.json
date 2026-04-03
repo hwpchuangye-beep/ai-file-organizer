@@ -1,0 +1,39 @@
+{
+  "$id": "directory-target.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DirectoryTarget",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["targetId", "path", "sourceType", "displayName"],
+  "properties": {
+    "targetId": {
+      "type": "string",
+      "description": "目录唯一标识"
+    },
+    "path": {
+      "type": "string",
+      "description": "绝对路径"
+    },
+    "displayName": {
+      "type": "string",
+      "description": "目录展示名称"
+    },
+    "sourceType": {
+      "type": "string",
+      "enum": ["desktop", "downloads", "user_selected", "watched"],
+      "description": "路径来源类型"
+    },
+    "isAuthorized": {
+      "type": "boolean",
+      "default": true
+    },
+    "isWatched": {
+      "type": "boolean",
+      "default": false
+    },
+    "lastScannedAt": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    }
+  }
+}

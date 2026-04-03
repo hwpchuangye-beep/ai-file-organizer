@@ -7,6 +7,30 @@ const https = require('https');
 const http = require('http');
 const { URL } = require('url');
 
+function normalizeBaseUrl(baseUrl) {
+  return String(baseUrl || '').trim().replace(/\/+$/, '');
+}
+
+function buildOpenAICompatibleUrl(baseUrl, endpointPath) {
+  const normalizedBase = normalizeBaseUrl(baseUrl);
+  if (!normalizedBase) {
+    throw new Error('缺少 baseUrl');
+  }
+  const normalizedEndpoint = endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`;
+  if (/\/v1$/i.test(normalizedBase)) {
+    return new URL(`${normalizedBase}${normalizedEndpoint}`);
+  }
+  return new URL(`${normalizedBase}/v1${normalizedEndpoint}`);
+}
+
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 // ========== 第一版业务白名单 ==========
 const ALLOWED_BUSINESS_CATEGORIES = {
   '运营': {
@@ -81,7 +105,7 @@ async function testConnection(config) {
   const { baseUrl, apiKey } = config;
   
   try {
-    const url = new URL(`${baseUrl}/v1/models`);
+    const url = buildOpenAICompatibleUrl(baseUrl, '/models');
     const client = url.protocol === 'https:' ? https : http;
     
     const options = {
@@ -472,7 +496,7 @@ function generateCompleteSchemes(scanResult) {
       confidence: schemeDecision.confidence,
       confidenceValue: schemeDecision.confidenceValue,
       suggestedFolders: finalFolders,
-      plannedMoves: finalMoves.slice(0, 50),
+      plannedMoves: finalMoves,
       uncertainItems: uncertainFiles.slice(0, 10).map(f => ({ file: f, reason: '业务特征不明显' })),
       source: 'analysis',
       previewTree: generatePreviewTree(finalMoves, finalFolders)
@@ -522,7 +546,7 @@ function generateCompleteSchemes(scanResult) {
     confidence: 'high',
     confidenceValue: 0.9,
     suggestedFolders: finalCategoryFolders,
-    plannedMoves: finalCategoryMoves.slice(0, 50),
+    plannedMoves: finalCategoryMoves,
     uncertainItems: [],
     source: 'rule',
     previewTree: generatePreviewTree(finalCategoryMoves, finalCategoryFolders)
@@ -575,17 +599,30 @@ function generateCompleteSchemes(scanResult) {
       confidence: schemeDecision.confidence,
       confidenceValue: schemeDecision.confidenceValue,
       suggestedFolders: mixedFolders,
-      plannedMoves: mixedMoves.slice(0, 50),
+      plannedMoves: mixedMoves,
       uncertainItems: [],
       source: 'analysis',
       previewTree: generatePreviewTree(mixedMoves, mixedFolders)
     });
   }
   
+  // 添加项目保护信息到每个方案
+  const protectedProjects = scanResult.protectedProjects || [];
+  const protectedFileCount = scanResult.protectedFileCount || 0;
+  
+  schemes.forEach(scheme => {
+    scheme.protectedProjects = protectedProjects;
+    scheme.protectedFileCount = protectedFileCount;
+    scheme.hasProtectedProjects = protectedProjects.length > 0;
+  });
+  
   return {
     schemes,
     source: schemeDecision.scheme === 'business' ? 'analysis' : 'rule',
-    recommendation: schemeDecision
+    recommendation: schemeDecision,
+    protectedProjects,
+    protectedFileCount,
+    hasProtectedProjects: protectedProjects.length > 0,
   };
 }
 
@@ -626,7 +663,7 @@ async function callAIModel(scanResult, modelConfig) {
   const prompt = buildOrganizationPrompt(scanResult);
   
   try {
-    const url = new URL(`${baseUrl}/v1/chat/completions`);
+    const url = buildOpenAICompatibleUrl(baseUrl, '/chat/completions');
     const client = url.protocol === 'https:' ? https : http;
     
     const requestBody = JSON.stringify({
@@ -768,7 +805,7 @@ function enrichSchemes(schemes, scanResult) {
       schemeName: scheme.schemeName || `方案 ${index + 1}`,
       reason: scheme.reason || '基于文件特征自动分类',
       suggestedFolders: scheme.suggestedFolders || [],
-      plannedMoves: plannedMoves.slice(0, 30),
+      plannedMoves: plannedMoves,
       uncertainItems: scheme.uncertainItems || [],
       previewTree: generatePreviewTree(plannedMoves, scheme.suggestedFolders),
       source: 'model',
@@ -802,7 +839,7 @@ async function getModels(config) {
   const { baseUrl, apiKey } = config;
   
   try {
-    const url = new URL(`${baseUrl}/v1/models`);
+    const url = buildOpenAICompatibleUrl(baseUrl, '/models');
     const client = url.protocol === 'https:' ? https : http;
     
     const options = {
@@ -851,4 +888,157 @@ async function getModels(config) {
   }
 }
 
-module.exports = { testConnection, generateSchemes, getModels };
+function summarizeSchemeForModelDecision(scheme) {
+  const plannedMoves = (scheme.moves || []).filter((move) => move.statusHint === 'planned').length;
+  const uncertainCount = (scheme.uncertainFiles || []).length;
+  const folderSummary = (scheme.folders || [])
+    .slice(0, 12)
+    .map((folder) => `${folder.folderType}:${folder.displayName || folder.pathName}`)
+    .join(', ');
+
+  return {
+    schemeId: scheme.schemeId,
+    schemeType: scheme.schemeType,
+    confidenceLevel: scheme.confidenceLevel,
+    confidence: Number(scheme.confidence || 0),
+    displayState: scheme.displayState || 'actionable',
+    plannedMoves,
+    uncertainCount,
+    reasons: (scheme.reasons || []).slice(0, 4),
+    folderSummary,
+  };
+}
+
+function parseModelDecisionContent(content) {
+  const direct = safeJsonParse(content);
+  if (direct && typeof direct === 'object') return direct;
+
+  const markdownJson = content.match(/```json\s*([\s\S]*?)\s*```/i);
+  if (markdownJson?.[1]) {
+    const parsed = safeJsonParse(markdownJson[1]);
+    if (parsed && typeof parsed === 'object') return parsed;
+  }
+
+  const objectLike = content.match(/\{[\s\S]*\}/);
+  if (objectLike?.[0]) {
+    const parsed = safeJsonParse(objectLike[0]);
+    if (parsed && typeof parsed === 'object') return parsed;
+  }
+
+  return null;
+}
+
+async function recommendOrganizationScheme({ profile, schemes, modelConfig }) {
+  if (!modelConfig?.baseUrl || !modelConfig?.modelName) {
+    return { success: false, message: '模型配置不完整，跳过模型推荐' };
+  }
+
+  const candidates = (schemes || []).map(summarizeSchemeForModelDecision);
+  if (candidates.length === 0) {
+    return { success: false, message: '没有候选方案可供模型决策' };
+  }
+
+  const payload = {
+    profile: {
+      directoryType: profile?.summary?.directoryType || 'mixed',
+      totalFiles: profile?.scanStats?.totalFiles || 0,
+      movableFiles: profile?.scanStats?.estimatedMovableFiles || 0,
+      protectedItems: (profile?.protectedItems || []).length,
+    },
+    candidates,
+  };
+
+  const systemPrompt = [
+    '你是文件整理 skill 的推荐决策器。',
+    '你只能在给定候选方案中选择推荐项，不能发明新方案。',
+    '优先目标：安全前提下最大化整理价值，避免碎片化目录。',
+    '若候选含 hold_safe 和 actionable，通常优先 actionable；只有风险明显过高时选 hold_safe。',
+    '必须输出 JSON：{"recommendedSchemeId":"...","reason":"...","fallbackSafe":boolean}',
+  ].join('\n');
+
+  const userPrompt = `请在候选方案中选一个推荐项。\n\n${JSON.stringify(payload, null, 2)}`;
+
+  try {
+    const url = buildOpenAICompatibleUrl(modelConfig.baseUrl, '/chat/completions');
+    const client = url.protocol === 'https:' ? https : http;
+
+    const requestBody = JSON.stringify({
+      model: modelConfig.modelName,
+      temperature: 0.1,
+      max_tokens: 500,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+    });
+
+    const response = await new Promise((resolve) => {
+      const req = client.request(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          ...(modelConfig.apiKey ? { Authorization: `Bearer ${modelConfig.apiKey}` } : {}),
+        },
+        timeout: 20000,
+      }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => {
+          data += chunk;
+        });
+        res.on('end', () => {
+          resolve({ statusCode: res.statusCode, body: data });
+        });
+      });
+
+      req.on('error', (error) => {
+        resolve({ statusCode: 0, body: '', error });
+      });
+      req.on('timeout', () => {
+        req.destroy();
+        resolve({ statusCode: 0, body: '', error: new Error('MODEL_DECISION_TIMEOUT') });
+      });
+
+      req.write(requestBody);
+      req.end();
+    });
+
+    if (response.statusCode !== 200) {
+      return {
+        success: false,
+        message: `模型推荐不可用（status=${response.statusCode || 'timeout'}），已回退规则排序`,
+      };
+    }
+
+    const raw = safeJsonParse(response.body);
+    const content = raw?.choices?.[0]?.message?.content;
+    if (!content) {
+      return { success: false, message: '模型未返回可解析内容，已回退规则排序' };
+    }
+
+    const parsed = parseModelDecisionContent(content);
+    const recommendedSchemeId = parsed?.recommendedSchemeId;
+    const matched = candidates.find((item) => item.schemeId === recommendedSchemeId);
+    if (!matched) {
+      return {
+        success: false,
+        message: '模型返回的方案ID无效，已回退规则排序',
+      };
+    }
+
+    return {
+      success: true,
+      recommendedSchemeId: matched.schemeId,
+      reason: String(parsed?.reason || '模型已完成候选方案决策'),
+      fallbackSafe: Boolean(parsed?.fallbackSafe),
+      modelName: modelConfig.modelName,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: `模型推荐异常：${error.message || 'unknown'}`,
+    };
+  }
+}
+
+module.exports = { testConnection, generateSchemes, getModels, recommendOrganizationScheme };

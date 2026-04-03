@@ -1,0 +1,201 @@
+{
+  "$id": "verification-report.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "VerificationReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "taskId",
+    "summary",
+    "successFiles",
+    "failedFiles",
+    "skippedFiles",
+    "createdFolders"
+  ],
+  "properties": {
+    "taskId": { "type": "string" },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scannedCount",
+        "plannedCount",
+        "executedCount",
+        "successCount",
+        "failedCount",
+        "skippedCount"
+      ],
+      "properties": {
+        "scannedCount": { "type": "integer", "minimum": 0 },
+        "plannedCount": { "type": "integer", "minimum": 0 },
+        "executedCount": { "type": "integer", "minimum": 0 },
+        "successCount": { "type": "integer", "minimum": 0 },
+        "failedCount": { "type": "integer", "minimum": 0 },
+        "skippedCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "successFiles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/SuccessFile" }
+    },
+    "failedFiles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/FailedFile" }
+    },
+    "skippedFiles": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/SkippedFile" }
+    },
+    "createdFolders": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["displayName", "path"],
+        "properties": {
+          "displayName": { "type": "string" },
+          "path": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "SuccessFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "sourcePath", "targetPath", "targetFolderName"],
+      "properties": {
+        "fileName": { "type": "string" },
+        "sourcePath": { "type": "string" },
+        "targetPath": { "type": "string" },
+        "targetFolderName": { "type": "string" },
+        "reason": { "type": "string" },
+        "sceneCategory": {
+          "type": ["string", "null"],
+          "enum": [
+            "简历",
+            "合同",
+            "发票",
+            "报销材料",
+            "PRD",
+            "会议纪要",
+            "调研报告",
+            "竞品分析",
+            "作品集",
+            "培训资料",
+            "证件材料",
+            "申请材料",
+            "报价单",
+            "需求文档",
+            "软件安装包",
+            "压缩包",
+            null
+          ]
+        },
+        "sceneKind": {
+          "type": "string",
+          "enum": ["semantic", "special_package"]
+        },
+        "sceneConfidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sceneEvidence": { "$ref": "#/$defs/SceneEvidence" },
+        "sceneAnalysisUsed": { "type": "boolean" }
+      }
+    },
+    "FailedFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "sourcePath", "targetPath", "errorCode", "errorMessage"],
+      "properties": {
+        "fileName": { "type": "string" },
+        "sourcePath": { "type": "string" },
+        "targetPath": { "type": "string" },
+        "errorCode": {
+          "type": "string",
+          "enum": [
+            "SOURCE_NOT_FOUND",
+            "TARGET_DIR_NOT_FOUND",
+            "TARGET_DIR_CREATE_FAILED",
+            "MOVE_FAILED",
+            "PERMISSION_DENIED",
+            "FILE_IN_USE",
+            "PATH_PARSE_ERROR",
+            "CROSS_VOLUME_MOVE_FAILED",
+            "SPECIAL_CHAR_PATH_ERROR",
+            "UNKNOWN_ERROR"
+          ]
+        },
+        "errorMessage": { "type": "string" },
+        "stillAtOriginalPath": { "type": "boolean", "default": true }
+      }
+    },
+    "SkippedFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "sourcePath", "reason"],
+      "properties": {
+        "fileName": { "type": "string" },
+        "sourcePath": { "type": "string" },
+        "reason": { "type": "string" },
+        "sceneCategory": {
+          "type": ["string", "null"],
+          "enum": [
+            "简历",
+            "合同",
+            "发票",
+            "报销材料",
+            "PRD",
+            "会议纪要",
+            "调研报告",
+            "竞品分析",
+            "作品集",
+            "培训资料",
+            "证件材料",
+            "申请材料",
+            "报价单",
+            "需求文档",
+            "软件安装包",
+            "压缩包",
+            null
+          ]
+        },
+        "sceneKind": {
+          "type": "string",
+          "enum": ["semantic", "special_package"]
+        },
+        "sceneConfidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "sceneEvidence": { "$ref": "#/$defs/SceneEvidence" },
+        "sceneAnalysisUsed": { "type": "boolean" }
+      }
+    },
+    "SceneEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "signals", "primaryReason"],
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["filename", "path_context", "cluster", "content_summary", "preference"]
+        },
+        "signals": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "signalCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "primaryReason": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

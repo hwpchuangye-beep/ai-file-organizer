@@ -6,10 +6,345 @@
 const fs = require('fs').promises;
 const path = require('path');
 const os = require('os');
+const schemaValidator = require('./schemaValidatorService.cjs');
+const taskService = require('./taskService.cjs');
 
 // 任务存储目录
 const TASKS_DIR = path.join(os.homedir(), '.ai-file-organizer', 'tasks');
 const LOGS_DIR = path.join(os.homedir(), '.ai-file-organizer', 'logs');
+
+/**
+ * ========== 项目保护模式配置 ==========
+ * 
+ * 检测到以下标记的目录将被视为项目/工作区，整体保护不拆分内部文件
+ */
+
+// 版本控制标记 - 代码仓库根
+const VCS_MARKERS = ['.git', '.svn', '.hg', '.bzr'];
+
+// 项目根标记 - 项目配置文件
+const PROJECT_ROOT_MARKERS = [
+  // JavaScript/Node
+  'package.json', 'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', '.npmrc',
+  // Python
+  'requirements.txt', 'pyproject.toml', 'setup.py', 'Pipfile', 'poetry.lock',
+  // Java
+  'pom.xml', 'build.gradle', 'gradle.properties',
+  // Go
+  'go.mod', 'go.sum',
+  // Rust
+  'Cargo.toml', 'Cargo.lock',
+  // Ruby
+  'Gemfile', 'Gemfile.lock',
+  // PHP
+  'composer.json', 'composer.lock',
+  // .NET
+  '*.csproj', '*.sln', 'packages.config',
+  // C/C++
+  'Makefile', 'CMakeLists.txt', 'configure.ac', 'configure.in',
+  // Swift/iOS
+  'Package.swift', '*.xcodeproj', '*.xcworkspace',
+  // Android
+  'build.gradle.kts', 'settings.gradle', 'AndroidManifest.xml',
+  // Docker
+  'Dockerfile', 'docker-compose.yml', 'docker-compose.yaml',
+  // CI/CD
+  '.github', '.gitlab-ci.yml', 'Jenkinsfile', '.travis.yml', '.circleci',
+  // Generic
+  'README.md', 'LICENSE', 'LICENSE.txt', 'LICENSE.md',
+  '.gitignore', '.gitattributes',
+  // IDE/Editor
+  '.editorconfig', '.prettierrc', '.eslintrc', '.babelrc',
+];
+
+// 工作区标记 - IDE/编辑器配置
+const WORKSPACE_MARKERS = [
+  '.vscode',           // VS Code
+  '.idea',             // JetBrains
+  '.vs',               // Visual Studio
+  '.eclipse',          // Eclipse
+  '.settings',         // Eclipse
+  '.project',          // Eclipse
+  '.classpath',        // Eclipse
+  'nbproject',         // NetBeans
+  '.theia',            // Theia
+  '.devcontainer',     // VS Code Dev Container
+];
+
+// 特殊目录 - 不应被整理的项目目录
+const PROTECTED_DIR_NAMES = [
+  'node_modules',
+  'vendor',
+  'target',
+  'build',
+  'dist',
+  'out',
+  '.next',
+  '.nuxt',
+  '.output',
+  'coverage',
+  '.cache',
+  '__pycache__',
+  '.pytest_cache',
+  '.mypy_cache',
+  '.gradle',
+  '.m2',
+  'bin',
+  'obj',
+  'Debug',
+  'Release',
+  'x64',
+  'x86',
+  '.vs',
+  '.terraform',
+  '.serverless',
+];
+
+/**
+ * 检测目录是否为项目根目录
+ * @param {string} dirPath - 目录路径
+ * @returns {Promise<Object>} - 检测结果
+ */
+async function detectProjectRoot(dirPath) {
+  try {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
+    const entryNames = entries.map(e => e.name);
+    
+    let detectedMarkers = [];
+    let projectType = null;
+    let confidence = 0;
+    
+    // 检查版本控制
+    for (const marker of VCS_MARKERS) {
+      if (entryNames.includes(marker)) {
+        detectedMarkers.push({ type: 'vcs', name: marker });
+        confidence += 0.5;
+        if (marker === '.git') projectType = 'git-repository';
+      }
+    }
+    
+    // 检查项目根标记
+    for (const marker of PROJECT_ROOT_MARKERS) {
+      if (marker.includes('*')) {
+        // 通配符匹配
+        const pattern = marker.replace(/\*/g, '');
+        for (const name of entryNames) {
+          if (name.endsWith(pattern)) {
+            detectedMarkers.push({ type: 'project', name });
+            confidence += 0.3;
+            if (!projectType) {
+              if (name.includes('package')) projectType = 'nodejs';
+              else if (name.includes('Cargo')) projectType = 'rust';
+              else if (name.includes('go.')) projectType = 'golang';
+              else if (name.includes('pom') || name.includes('gradle')) projectType = 'java';
+              else if (name.includes('requirements') || name.includes('pyproject')) projectType = 'python';
+              else projectType = 'project';
+            }
+          }
+        }
+      } else if (entryNames.includes(marker)) {
+        detectedMarkers.push({ type: 'project', name: marker });
+        confidence += 0.3;
+        if (!projectType) {
+          if (marker === 'package.json') projectType = 'nodejs';
+          else if (marker === 'Cargo.toml') projectType = 'rust';
+          else if (marker === 'go.mod') projectType = 'golang';
+          else if (marker === 'pom.xml' || marker === 'build.gradle') projectType = 'java';
+          else if (marker === 'requirements.txt' || marker === 'pyproject.toml') projectType = 'python';
+          else projectType = 'project';
+        }
+      }
+    }
+    
+    // 检查工作区标记
+    for (const marker of WORKSPACE_MARKERS) {
+      if (entryNames.includes(marker)) {
+        detectedMarkers.push({ type: 'workspace', name: marker });
+        confidence += 0.2;
+      }
+    }
+    
+    const isProjectRoot = confidence >= 0.3;
+    
+    return {
+      isProjectRoot,
+      projectType: isProjectRoot ? (projectType || 'generic-project') : null,
+      confidence: Math.min(confidence, 1.0),
+      markers: detectedMarkers,
+      shouldProtect: isProjectRoot || entryNames.some(name => PROTECTED_DIR_NAMES.includes(name)),
+    };
+  } catch (e) {
+    return { isProjectRoot: false, shouldProtect: false, error: e.message };
+  }
+}
+
+/**
+ * 扫描目录并标记项目
+ * @param {string} targetPath - 目标路径
+ * @returns {Promise<Object>} - 扫描结果
+ */
+async function scanWithProjectProtection(targetPath) {
+  const files = [];              // 可整理的普通文件
+  const protectedProjects = [];  // 受保护的项目列表
+  let protectedFileCount = 0;    // 受保护的文件总数
+  
+  // 使用栈来避免递归深度问题，同时跟踪是否在保护项目内
+  const stack = [{ path: targetPath, relativePath: '', depth: 0, isProtected: false, projectInfo: null }];
+  
+  while (stack.length > 0) {
+    const { path: currentPath, relativePath, depth, isProtected, projectInfo: parentProject } = stack.pop();
+    
+    let entries;
+    try {
+      entries = await fs.readdir(currentPath, { withFileTypes: true });
+    } catch (err) {
+      continue;
+    }
+    
+    // 检测当前目录是否为项目根（只要不是根目录，或者根目录本身也是项目）
+    const projectInfo = await detectProjectRoot(currentPath);
+    const isProjectRoot = projectInfo.shouldProtect;
+    const dirName = path.basename(currentPath);
+    const isProtectedDirName = PROTECTED_DIR_NAMES.includes(dirName);
+    
+    // 如果当前目录是项目根或受保护目录名，标记为保护
+    if ((isProjectRoot || isProtectedDirName) && !isProtected) {
+      const currentProjectInfo = isProjectRoot ? {
+        path: currentPath,
+        relativePath: relativePath,
+        type: projectInfo.projectType || 'protected-directory',
+        markers: projectInfo.markers.map(m => m.name),
+        confidence: projectInfo.confidence,
+      } : {
+        path: currentPath,
+        relativePath: relativePath,
+        type: 'protected-directory',
+        markers: [dirName],
+        confidence: 1.0,
+      };
+      
+      protectedProjects.push(currentProjectInfo);
+      
+      // 统计该项目内的所有文件（但不添加到可整理列表）
+      const count = await countFilesRecursive(currentPath);
+      protectedFileCount += count;
+      
+      // 继续扫描子目录，但标记为受保护状态
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        
+        const fullPath = path.join(currentPath, entry.name);
+        const relPath = path.join(relativePath, entry.name);
+        
+        if (entry.isDirectory()) {
+          stack.push({ 
+            path: fullPath, 
+            relativePath: relPath, 
+            depth: depth + 1, 
+            isProtected: true,
+            projectInfo: currentProjectInfo
+          });
+        } else if (entry.isFile()) {
+          // 受保护的文件只计数，不加入可整理列表
+          protectedFileCount++;
+        }
+      }
+      continue;
+    }
+    
+    // 如果在受保护的项目内，只计数不收集
+    if (isProtected) {
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        
+        const fullPath = path.join(currentPath, entry.name);
+        
+        if (entry.isDirectory()) {
+          stack.push({ 
+            path: fullPath, 
+            relativePath: path.join(relativePath, entry.name), 
+            depth: depth + 1, 
+            isProtected: true,
+            projectInfo: parentProject
+          });
+        } else if (entry.isFile()) {
+          protectedFileCount++;
+        }
+      }
+      continue;
+    }
+    
+    // 普通目录，正常收集文件
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      
+      const fullPath = path.join(currentPath, entry.name);
+      const relPath = path.join(relativePath, entry.name);
+      
+      if (entry.isDirectory()) {
+        stack.push({ 
+          path: fullPath, 
+          relativePath: relPath, 
+          depth: depth + 1, 
+          isProtected: false,
+          projectInfo: null
+        });
+      } else if (entry.isFile()) {
+        try {
+          const stats = await fs.stat(fullPath);
+          files.push({
+            name: entry.name,
+            path: fullPath,
+            relativePath: relPath,
+            size: stats.size,
+            createdAt: stats.birthtime,
+            modifiedAt: stats.mtime,
+            extension: path.extname(entry.name).toLowerCase(),
+            isInProtectedProject: false,
+          });
+        } catch (e) {}
+      }
+    }
+  }
+  
+  return {
+    files,
+    protectedProjects,
+    protectedFileCount,
+    totalFiles: files.length + protectedFileCount,
+  };
+}
+
+/**
+ * 递归计算目录中的文件数量
+ */
+async function countFilesRecursive(dirPath) {
+  let fileCount = 0;
+  
+  async function doCount(currentPath) {
+    let entries;
+    try {
+      entries = await fs.readdir(currentPath, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    
+    for (const entry of entries) {
+      if (entry.name.startsWith('.')) continue;
+      
+      const fullPath = path.join(currentPath, entry.name);
+      
+      if (entry.isDirectory()) {
+        await doCount(fullPath);
+      } else if (entry.isFile()) {
+        fileCount++;
+      }
+    }
+  }
+  
+  await doCount(dirPath);
+  return fileCount;
+}
 
 /**
  * 错误码映射：将系统错误码映射为业务错误码
@@ -226,6 +561,20 @@ async function checkSourceFile(sourcePath, logger) {
 async function ensureTargetDir(targetDir, logger) {
   try {
     await logger.info(`检查/创建目标目录: ${targetDir}`);
+    let existedBefore = true;
+    try {
+      const preStat = await fs.stat(targetDir);
+      if (!preStat.isDirectory()) {
+        throw new Error('目标路径已存在且不是目录');
+      }
+    } catch (preErr) {
+      if (preErr.code === 'ENOENT') {
+        existedBefore = false;
+      } else {
+        throw preErr;
+      }
+    }
+
     await fs.mkdir(targetDir, { recursive: true });
     
     // 验证目录确实被创建
@@ -235,7 +584,7 @@ async function ensureTargetDir(targetDir, logger) {
     }
     
     await logger.info(`目标目录就绪: ${targetDir}`);
-    return { success: true };
+    return { success: true, created: !existedBefore };
   } catch (error) {
     const errorInfo = classifyError(error, 'target_dir_create', '', targetDir);
     await logger.error(`创建目标目录失败: ${targetDir}`, errorInfo);
@@ -261,6 +610,12 @@ async function safeMoveFile(sourcePath, targetPath, logger) {
   const dirCheck = await ensureTargetDir(targetDir, logger);
   if (!dirCheck.success) {
     return { success: false, error: dirCheck.error };
+  }
+
+  // 2.5 同名冲突预检测（避免 rename 直接覆盖已有文件）
+  if (await fileExists(targetPath)) {
+    await logger.warn(`检测到目标已存在，改用唯一文件名: ${targetPath}`);
+    return await moveWithUniqueName(sourcePath, targetPath, logger);
   }
 
   // 3. 尝试移动
@@ -425,11 +780,21 @@ async function executeTask(taskPayload) {
     movedFiles: [],
     skippedFiles: [],
     failedFiles: [],
+    protectedProjects: scheme.protectedProjects || [], // 受保护的项目列表
     startedAt: new Date().toISOString(),
     finishedAt: null,
     status: 'running',
     logs: [],
   };
+  
+  // 记录项目保护模式状态
+  if (result.protectedProjects.length > 0) {
+    await logger.info('项目保护模式已启用', {
+      protectedCount: result.protectedProjects.length,
+      protectedTypes: result.protectedProjects.map(p => p.type),
+      protectedPaths: result.protectedProjects.map(p => p.relativePath),
+    });
+  }
 
   try {
     // ========== 阶段1: 创建文件夹 ==========
@@ -565,10 +930,16 @@ async function executeTask(taskPayload) {
     result.status = 'completed';
     result.finishedAt = new Date().toISOString();
     result.logs = logger.getLogs();
+    
+    // 更新统计信息，包含保护的项目
+    result.stats.protectedProjects = result.protectedProjects.length;
+    result.stats.protectedFiles = scheme.protectedFileCount || 0;
 
     await logger.info('========== 任务完成 ==========', {
       status: result.status,
       duration: new Date(result.finishedAt) - new Date(result.startedAt),
+      protectedProjects: result.protectedProjects.length,
+      protectedFiles: result.stats.protectedFiles,
     });
 
     await saveTask(result);
@@ -648,7 +1019,14 @@ async function getTaskHistory() {
 }
 
 /**
- * 撤销任务
+ * 智能撤销任务
+ * 
+ * 业务语义判断逻辑：
+ * 1. 已撤销状态：原位置存在，目标位置不存在 → 达成目标 ✅
+ * 2. 自动达成：原位置存在，目标位置不存在（用户手动移回）→ 达成目标 ✅
+ * 3. 冲突状态：两边都存在 → 智能判断处理 ⚠️
+ * 4. 丢失状态：两边都不存在 → 失败 ❌
+ * 5. 异常状态：原位置不存在，目标位置存在 → 执行撤销
  */
 async function rollbackLatestTask() {
   const task = await getLatestTask();
@@ -662,83 +1040,285 @@ async function rollbackLatestTask() {
   }
 
   const logger = new OperationLogger(`${task.taskId}-rollback`);
-  await logger.info('开始撤销任务', { taskId: task.taskId });
+  await logger.info('开始智能撤销任务', { taskId: task.taskId, totalFiles: task.movedFiles?.length || 0 });
 
   const rollbackResult = {
     taskId: task.taskId,
-    successFiles: [],
-    failedFiles: [],
+    successFiles: [],      // 成功撤销的文件
+    alreadyRolledBack: [], // 已自动达成（用户手动移回）
+    conflictFiles: [],     // 冲突需要处理的文件
+    failedFiles: [],       // 真正失败的文件（丢失）
+    skippedFiles: [],      // 跳过的文件
     rolledbackAt: new Date().toISOString(),
     logs: [],
   };
 
   for (const move of task.movedFiles || []) {
     try {
-      await logger.info(`撤销: ${move.target} -> ${move.source}`);
-      
-      // 检查文件是否在目标位置
-      try {
-        await fs.access(move.target);
-      } catch {
-        const reason = '文件已不在目标位置';
-        await logger.warn(`撤销跳过: ${move.name}`, { reason });
-        rollbackResult.failedFiles.push({ name: move.name, reason });
+      await logger.info(`分析撤销状态: ${move.name}`, {
+        source: move.source,
+        target: move.target,
+      });
+
+      // 获取文件状态
+      const sourceExists = await fileExists(move.source);
+      const targetExists = await fileExists(move.target);
+
+      // 情况1：已撤销或自动达成（原位置存在，目标位置不存在）
+      if (sourceExists && !targetExists) {
+        const isManualRecovery = !move.rolledBackAt; // 没有撤销记录说明是用户手动移回的
+        const status = isManualRecovery ? 'auto_achieved' : 'already_rolled_back';
+        
+        rollbackResult.alreadyRolledBack.push({
+          name: move.name,
+          source: move.source,
+          status: status,
+          reason: isManualRecovery ? '文件已在原位置（可能用户手动移回）' : '已在此前撤销',
+        });
+        await logger.info(`撤销已达成（无需操作）: ${move.name}`, { status });
         continue;
       }
 
-      // 检查原位置
-      let finalSource = move.source;
-      try {
-        await fs.access(move.source);
-        // 有冲突，使用新名称
-        const dir = path.dirname(move.source);
-        const ext = path.extname(move.source);
-        const base = path.basename(move.source, ext);
-        let counter = 1;
-        while (true) {
-          try {
-            await fs.access(finalSource);
-            finalSource = path.join(dir, `${base} (恢复 ${counter})${ext}`);
-            counter++;
-          } catch {
-            break;
-          }
-        }
-      } catch {
-        // 原位置为空，可以直接移回
+      // 情况2：两边都不存在 - 文件丢失
+      if (!sourceExists && !targetExists) {
+        rollbackResult.failedFiles.push({
+          name: move.name,
+          source: move.source,
+          target: move.target,
+          reason: '文件丢失：原位置和目标位置都找不到文件',
+          severity: 'high',
+        });
+        await logger.error(`撤销失败（文件丢失）: ${move.name}`, {
+          source: move.source,
+          target: move.target,
+        });
+        continue;
       }
 
-      await fs.rename(move.target, finalSource);
-      rollbackResult.successFiles.push({
-        name: move.name,
-        from: move.target,
-        to: finalSource,
-      });
-      await logger.info(`撤销成功: ${move.name}`);
+      // 情况3：目标位置存在，原位置不存在 - 执行撤销移动
+      if (!sourceExists && targetExists) {
+        // 检查原位置父目录是否存在
+        const sourceDir = path.dirname(move.source);
+        const dirExists = await fileExists(sourceDir);
+        
+        if (!dirExists) {
+          try {
+            await fs.mkdir(sourceDir, { recursive: true });
+            await logger.info(`创建原目录: ${sourceDir}`);
+          } catch (e) {
+            rollbackResult.failedFiles.push({
+              name: move.name,
+              reason: `无法创建原目录: ${e.message}`,
+              severity: 'medium',
+            });
+            continue;
+          }
+        }
+
+        // 执行移动
+        await fs.rename(move.target, move.source);
+        rollbackResult.successFiles.push({
+          name: move.name,
+          from: move.target,
+          to: move.source,
+          method: 'rename',
+        });
+        await logger.info(`撤销成功: ${move.name}`);
+        continue;
+      }
+
+      // 情况4：两边都存在 - 冲突，需要智能处理
+      if (sourceExists && targetExists) {
+        // 获取文件信息进行比较
+        const sourceInfo = await getFileInfo(move.source);
+        const targetInfo = await getFileInfo(move.target);
+
+        // 智能判断策略
+        const decision = await resolveConflict(move, sourceInfo, targetInfo);
+
+        if (decision.action === 'keep_both') {
+          // 保留两个版本，目标位置的文件重命名
+          const dir = path.dirname(move.source);
+          const ext = path.extname(move.name);
+          const base = path.basename(move.name, ext);
+          
+          let finalSource = path.join(dir, `${base} (来自整理)${ext}`);
+          let counter = 1;
+          while (await fileExists(finalSource)) {
+            finalSource = path.join(dir, `${base} (来自整理 ${counter})${ext}`);
+            counter++;
+          }
+
+          await fs.rename(move.target, finalSource);
+          rollbackResult.conflictFiles.push({
+            name: move.name,
+            action: 'renamed',
+            sourceFile: move.source,
+            targetFile: finalSource,
+            reason: decision.reason,
+          });
+          await logger.info(`冲突解决（保留两份）: ${move.name} -> ${finalSource}`);
+
+        } else if (decision.action === 'replace_source') {
+          // 目标位置的文件较新，替换原位置的
+          await fs.unlink(move.source);
+          await fs.rename(move.target, move.source);
+          rollbackResult.successFiles.push({
+            name: move.name,
+            from: move.target,
+            to: move.source,
+            method: 'replace',
+            note: '用整理后的版本替换了原位置的版本',
+          });
+          await logger.info(`冲突解决（替换原文件）: ${move.name}`);
+
+        } else if (decision.action === 'keep_source') {
+          // 原位置的文件较新，删除目标位置的
+          await fs.unlink(move.target);
+          rollbackResult.alreadyRolledBack.push({
+            name: move.name,
+            source: move.source,
+            status: 'conflict_resolved',
+            reason: '原位置文件较新，删除了目标位置的副本',
+          });
+          await logger.info(`冲突解决（保留原文件）: ${move.name}`);
+
+        } else {
+          // 无法判断，记录冲突待用户处理
+          rollbackResult.conflictFiles.push({
+            name: move.name,
+            action: 'manual_required',
+            sourceFile: move.source,
+            targetFile: move.target,
+            sourceInfo,
+            targetInfo,
+            reason: '无法自动判断哪个版本更合适，请手动处理',
+          });
+          await logger.warn(`冲突待手动处理: ${move.name}`);
+        }
+      }
       
     } catch (e) {
       const errorInfo = classifyError(e, 'move', move.target, move.source);
-      await logger.error(`撤销失败: ${move.name}`, errorInfo);
+      await logger.error(`撤销异常: ${move.name}`, errorInfo);
       rollbackResult.failedFiles.push({
         name: move.name,
         reason: errorInfo.userMessage,
+        severity: 'medium',
       });
     }
   }
+
+  // 计算总体结果
+  const totalProcessed = rollbackResult.successFiles.length + 
+                         rollbackResult.alreadyRolledBack.length +
+                         rollbackResult.conflictFiles.length +
+                         rollbackResult.failedFiles.length;
+  
+  const trulyFailed = rollbackResult.failedFiles.filter(f => f.severity === 'high').length;
+  const hasConflicts = rollbackResult.conflictFiles.length > 0;
 
   rollbackResult.logs = logger.getLogs();
   task.rolledback = true;
   task.rollbackResult = rollbackResult;
   await saveTask(task);
 
-  const allSuccess = rollbackResult.failedFiles.length === 0;
+  // 生成用户友好的消息
+  let message = '';
+  if (trulyFailed === 0 && !hasConflicts) {
+    message = `撤销完成：${rollbackResult.successFiles.length} 个文件已恢复，${rollbackResult.alreadyRolledBack.length} 个文件状态正常`;
+  } else if (trulyFailed === 0 && hasConflicts) {
+    message = `撤销完成：${rollbackResult.successFiles.length} 个文件已恢复，${rollbackResult.conflictFiles.length} 个文件存在冲突需要检查`;
+  } else {
+    message = `撤销部分完成：${rollbackResult.successFiles.length} 个成功，${rollbackResult.alreadyRolledBack.length} 个状态正常，${rollbackResult.conflictFiles.length} 个冲突，${trulyFailed} 个文件丢失`;
+  }
+
   return {
-    success: allSuccess,
-    partial: !allSuccess && rollbackResult.successFiles.length > 0,
+    success: trulyFailed === 0,
+    partial: trulyFailed > 0 && rollbackResult.successFiles.length > 0,
+    hasConflicts,
     result: rollbackResult,
-    message: allSuccess
-      ? '撤销成功'
-      : `撤销部分成功：${rollbackResult.successFiles.length} 个文件恢复，${rollbackResult.failedFiles.length} 个文件失败`,
+    message,
+  };
+}
+
+/**
+ * 检查文件是否存在
+ */
+async function fileExists(filePath) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 获取文件信息
+ */
+async function getFileInfo(filePath) {
+  try {
+    const stats = await fs.stat(filePath);
+    return {
+      exists: true,
+      size: stats.size,
+      modifiedAt: stats.mtime,
+      createdAt: stats.birthtime,
+      isFile: stats.isFile(),
+      isDirectory: stats.isDirectory(),
+    };
+  } catch {
+    return { exists: false };
+  }
+}
+
+/**
+ * 智能冲突解决
+ * 根据文件大小、修改时间判断哪个版本更合适
+ */
+async function resolveConflict(move, sourceInfo, targetInfo) {
+  // 策略1：如果文件大小差异很大，保留较大的（可能包含更多信息）
+  const sizeDiff = Math.abs(sourceInfo.size - targetInfo.size);
+  const sizeDiffPercent = sizeDiff / Math.max(sourceInfo.size, targetInfo.size);
+  
+  if (sizeDiffPercent > 0.5) {
+    // 大小差异超过50%
+    if (targetInfo.size > sourceInfo.size) {
+      return {
+        action: 'replace_source',
+        reason: '目标位置的文件明显更大，可能包含更多内容',
+      };
+    } else {
+      return {
+        action: 'keep_source',
+        reason: '原位置的文件更大，保留原文件',
+      };
+    }
+  }
+
+  // 策略2：根据修改时间判断
+  const timeDiff = targetInfo.modifiedAt.getTime() - sourceInfo.modifiedAt.getTime();
+  const hoursDiff = timeDiff / (1000 * 60 * 60);
+  
+  if (hoursDiff > 24) {
+    // 目标位置的文件比原位置的晚超过24小时
+    return {
+      action: 'replace_source',
+      reason: '目标位置的文件更新（修改时间晚24小时以上）',
+    };
+  } else if (hoursDiff < -24) {
+    // 原位置的文件更新
+    return {
+      action: 'keep_source',
+      reason: '原位置的文件更新',
+    };
+  }
+
+  // 策略3：默认保留两份
+  return {
+    action: 'keep_both',
+    reason: '两个版本差异不大，建议都保留',
   };
 }
 
@@ -909,11 +1489,556 @@ async function repairHiddenDirectories(targetPath) {
   };
 }
 
+function normalizeFailedCode(errorCode) {
+  switch (errorCode) {
+    case 'SOURCE_NOT_FOUND':
+      return 'SOURCE_NOT_FOUND';
+    case 'TARGET_DIR_NOT_FOUND':
+      return 'TARGET_DIR_NOT_FOUND';
+    case 'TARGET_DIR_CREATE_FAILED':
+      return 'TARGET_DIR_CREATE_FAILED';
+    case 'MOVE_FAILED':
+      return 'MOVE_FAILED';
+    case 'PERMISSION_DENIED':
+      return 'PERMISSION_DENIED';
+    case 'FILE_LOCKED':
+      return 'FILE_IN_USE';
+    case 'INVALID_PATH_CHARS':
+      return 'SPECIAL_CHAR_PATH_ERROR';
+    case 'INVALID_PATH':
+      return 'PATH_PARSE_ERROR';
+    case 'CROSS_VOLUME_FAILED':
+    case 'CROSS_VOLUME_MOVE':
+      return 'CROSS_VOLUME_MOVE_FAILED';
+    default:
+      return 'UNKNOWN_ERROR';
+  }
+}
+
+function ensureInsideRoot(targetRoot, candidatePath) {
+  const root = path.resolve(targetRoot);
+  const candidate = path.resolve(candidatePath);
+  if (candidate === root) return true;
+  return candidate.startsWith(`${root}${path.sep}`);
+}
+
+function buildFolderPathMaps(targetRoot, folders) {
+  const byId = new Map();
+  folders.forEach((folder) => byId.set(folder.folderId, folder));
+
+  const absCache = new Map();
+
+  function resolveFolderAbs(folderId) {
+    if (absCache.has(folderId)) return absCache.get(folderId);
+    const folder = byId.get(folderId);
+    if (!folder) return null;
+    if (!folder.pathName || folder.pathName.startsWith('.') || folder.pathName.includes('/') || folder.pathName.includes('\\')) {
+      return null;
+    }
+
+    if (!folder.parentFolderId) {
+      const abs = path.join(targetRoot, folder.pathName);
+      absCache.set(folderId, abs);
+      return abs;
+    }
+
+    const parentAbs = resolveFolderAbs(folder.parentFolderId);
+    if (!parentAbs) return null;
+    const abs = path.join(parentAbs, folder.pathName);
+    absCache.set(folderId, abs);
+    return abs;
+  }
+
+  for (const folder of folders) {
+    resolveFolderAbs(folder.folderId);
+  }
+
+  return {
+    byId,
+    absById: absCache,
+  };
+}
+
+function collectRequiredFolderIds(schemeFolders, plannedMoves) {
+  const folderById = new Map();
+  (schemeFolders || []).forEach((folder) => folderById.set(folder.folderId, folder));
+
+  const required = new Set();
+
+  function markWithParents(folderId) {
+    let current = folderId;
+    const seen = new Set();
+    while (current && !seen.has(current)) {
+      seen.add(current);
+      const folder = folderById.get(current);
+      if (!folder) break;
+      required.add(current);
+      current = folder.parentFolderId || null;
+    }
+  }
+
+  for (const move of plannedMoves) {
+    if (!move?.targetFolderId) continue;
+    markWithParents(move.targetFolderId);
+  }
+
+  return required;
+}
+
+function extractSceneFields(item) {
+  if (!item || typeof item !== 'object') return {};
+  const out = {};
+  if (Object.prototype.hasOwnProperty.call(item, 'sceneCategory')) out.sceneCategory = item.sceneCategory;
+  if (item.sceneKind !== undefined) out.sceneKind = item.sceneKind;
+  if (item.sceneConfidence !== undefined) out.sceneConfidence = item.sceneConfidence;
+  if (item.sceneEvidence !== undefined) out.sceneEvidence = item.sceneEvidence;
+  if (item.sceneAnalysisUsed !== undefined) out.sceneAnalysisUsed = item.sceneAnalysisUsed;
+  return out;
+}
+
+async function executeOrganizationScheme(taskPayload) {
+  const taskId = taskPayload.taskId || `${Date.now()}`;
+  const targetPath = taskPayload.targetPath;
+  const scheme = taskPayload.scheme;
+  const scannedCount = taskPayload.scannedCount || 0;
+  const checkpoint = taskPayload.checkpoint || null;
+  const batchSize = Number.isInteger(taskPayload.batchSize) && taskPayload.batchSize > 0 ? taskPayload.batchSize : 200;
+  const maxBatchesPerRun =
+    Number.isInteger(taskPayload.maxBatchesPerRun) && taskPayload.maxBatchesPerRun > 0
+      ? taskPayload.maxBatchesPerRun
+      : null;
+
+  schemaValidator.assertValid('organization-scheme.schema.json', scheme, 'OrganizationScheme validation failed before execution');
+
+  await fs.mkdir(TASKS_DIR, { recursive: true });
+  await fs.mkdir(LOGS_DIR, { recursive: true });
+  await taskService.ensureStorage();
+
+  const logger = new OperationLogger(taskId);
+  const plannedMoves = (scheme.moves || []).filter((move) => move.statusHint === 'planned');
+  const nonPlannedMoves = (scheme.moves || []).filter((move) => move.statusHint !== 'planned');
+  const totalBatches = Math.max(1, Math.ceil(Math.max(plannedMoves.length, 1) / batchSize));
+
+  const task = checkpoint?.task || {
+    taskId,
+    targetPath,
+    schemeId: scheme.schemeId,
+    status: 'running',
+    plannedMoveCount: plannedMoves.length,
+    completedMoveCount: 0,
+    failedMoveCount: 0,
+    skippedMoveCount: 0,
+    createdFolders: [],
+    rollbackMap: [],
+    batchInfo: {
+      currentBatch: 1,
+      totalBatches,
+    },
+    createdAt: new Date().toISOString(),
+    finishedAt: null,
+  };
+
+  const receipt = checkpoint?.receipt || {
+    taskId,
+    schemeId: scheme.schemeId,
+    targetPath,
+    summary: {
+      plannedCount: plannedMoves.length,
+      executedCount: 0,
+      successCount: 0,
+      failedCount: 0,
+      skippedCount: 0,
+    },
+    createdFolders: [],
+    moves: [],
+    scannedCount,
+    createdAt: task.createdAt,
+    finishedAt: null,
+  };
+
+  let nextPlannedIndex = checkpoint?.nextPlannedIndex || 0;
+  let nonPlannedRecorded = Boolean(checkpoint?.nonPlannedRecorded);
+  let uncertainFilesRecorded = Boolean(checkpoint?.uncertainFilesRecorded);
+
+  task.status = 'running';
+  task.finishedAt = null;
+  task.batchInfo = {
+    currentBatch: Math.min(totalBatches, Math.floor(nextPlannedIndex / batchSize) + 1),
+    totalBatches,
+  };
+
+  const persistCheckpoint = async () => {
+    const snapshot = {
+      taskId,
+      schemeId: scheme.schemeId,
+      targetPath,
+      scannedCount,
+      batchSize,
+      totalBatches,
+      nextPlannedIndex,
+      nonPlannedRecorded,
+      uncertainFilesRecorded,
+      task,
+      receipt,
+      scheme,
+      updatedAt: new Date().toISOString(),
+    };
+    await taskService.saveCheckpoint(snapshot);
+    await taskService.saveTask(task);
+  };
+
+  try {
+    const { byId, absById } = buildFolderPathMaps(targetPath, scheme.folders || []);
+    const requiredFolderIds = collectRequiredFolderIds(scheme.folders || [], plannedMoves);
+
+    // 阶段1：仅为 planned move 创建必需目录（严格 targetRoot 沙箱）
+    for (const folder of scheme.folders || []) {
+      if (!requiredFolderIds.has(folder.folderId)) continue;
+      const folderAbs = absById.get(folder.folderId);
+      if (!folderAbs) {
+        await logger.warn('跳过非法目录定义', folder);
+        continue;
+      }
+      if (!ensureInsideRoot(targetPath, folderAbs)) {
+        await logger.error('检测到路径逃逸，拒绝创建目录', { folderAbs, targetPath });
+        throw new Error(`路径逃逸: ${folderAbs}`);
+      }
+
+      const dirResult = await ensureTargetDir(folderAbs, logger);
+      if (dirResult.success && dirResult.created) {
+        if (!task.createdFolders.includes(folderAbs)) task.createdFolders.push(folderAbs);
+        if (!receipt.createdFolders.includes(folderAbs)) receipt.createdFolders.push(folderAbs);
+      } else if (!dirResult.success) {
+        receipt.moves.push({
+          fileId: `folder-create:${folder.folderId}`,
+          fileName: folder.displayName || folder.pathName,
+          sourcePath: '',
+          targetPath: folderAbs,
+          status: 'failed',
+          errorCode: normalizeFailedCode(dirResult.error.errorCode),
+          errorMessage: dirResult.error.userMessage,
+        });
+      }
+    }
+
+    if (!nonPlannedRecorded) {
+      for (const move of nonPlannedMoves) {
+        if (!move.fileId || !move.sourcePath) {
+          task.skippedMoveCount += 1;
+          receipt.summary.skippedCount += 1;
+          receipt.moves.push({
+            fileId: move.fileId || 'missing-file-id',
+            fileName: move.fileName || 'unknown',
+            sourcePath: move.sourcePath || '',
+            targetPath: move.targetPath || '',
+            status: 'skipped',
+            reason: '缺少 fileId/sourcePath',
+            ...extractSceneFields(move),
+          });
+          continue;
+        }
+        task.skippedMoveCount += 1;
+        receipt.summary.skippedCount += 1;
+        receipt.moves.push({
+          fileId: move.fileId,
+          fileName: move.fileName,
+          sourcePath: move.sourcePath,
+          targetPath: move.targetPath,
+          status: 'skipped',
+          reason: move.statusHint === 'uncertain' ? '待确认文件' : '规则跳过',
+          ...extractSceneFields(move),
+        });
+      }
+      nonPlannedRecorded = true;
+    }
+
+    if (!uncertainFilesRecorded) {
+      const uncertainMoveSources = new Set(
+        nonPlannedMoves
+          .filter((move) => move.statusHint === 'uncertain')
+          .map((move) => move.sourcePath)
+      );
+
+      for (const [index, uncertain] of (scheme.uncertainFiles || []).entries()) {
+        if (!uncertain?.sourcePath) continue;
+        if (uncertainMoveSources.has(uncertain.sourcePath)) continue;
+        task.skippedMoveCount += 1;
+        receipt.summary.skippedCount += 1;
+        receipt.moves.push({
+          fileId: `uncertain:${index}:${path.basename(uncertain.sourcePath)}`,
+          fileName: uncertain.fileName || path.basename(uncertain.sourcePath),
+          sourcePath: uncertain.sourcePath,
+          targetPath: uncertain.sourcePath,
+          status: 'skipped',
+          reason: '待确认，未自动移动',
+          ...extractSceneFields(uncertain),
+        });
+      }
+      uncertainFilesRecorded = true;
+    }
+
+    let processedBatches = 0;
+    while (nextPlannedIndex < plannedMoves.length) {
+      if (maxBatchesPerRun !== null && processedBatches >= maxBatchesPerRun) break;
+
+      const batchStart = nextPlannedIndex;
+      const batchEnd = Math.min(batchStart + batchSize, plannedMoves.length);
+      task.batchInfo = {
+        currentBatch: Math.floor(batchStart / batchSize) + 1,
+        totalBatches,
+      };
+
+      for (let idx = batchStart; idx < batchEnd; idx += 1) {
+        const move = plannedMoves[idx];
+        const folder = byId.get(move.targetFolderId);
+        const folderAbs = absById.get(move.targetFolderId);
+        if (!folder || !folderAbs) {
+          task.failedMoveCount += 1;
+          receipt.summary.failedCount += 1;
+          receipt.moves.push({
+            fileId: move.fileId,
+            fileName: move.fileName,
+            sourcePath: move.sourcePath,
+            targetPath: move.targetPath,
+            status: 'failed',
+            errorCode: 'TARGET_DIR_NOT_FOUND',
+            errorMessage: `未找到目标目录: ${move.targetFolderId}`,
+            reason: move.reason || '目标目录缺失',
+            ...extractSceneFields(move),
+          });
+          continue;
+        }
+
+        const expectedTargetPath = path.join(folderAbs, move.fileName);
+        const moveTargetPath = path.resolve(move.targetPath);
+        const expectedResolved = path.resolve(expectedTargetPath);
+
+        if (moveTargetPath !== expectedResolved) {
+          task.failedMoveCount += 1;
+          receipt.summary.failedCount += 1;
+          receipt.moves.push({
+            fileId: move.fileId,
+            fileName: move.fileName,
+            sourcePath: move.sourcePath,
+            targetPath: move.targetPath,
+            status: 'failed',
+            errorCode: 'PATH_PARSE_ERROR',
+            errorMessage: '计划目标路径与目录映射不一致',
+            reason: move.reason || '目标路径映射冲突',
+            ...extractSceneFields(move),
+          });
+          continue;
+        }
+
+        if (!ensureInsideRoot(targetPath, expectedResolved)) {
+          task.failedMoveCount += 1;
+          receipt.summary.failedCount += 1;
+          receipt.moves.push({
+            fileId: move.fileId,
+            fileName: move.fileName,
+            sourcePath: move.sourcePath,
+            targetPath: move.targetPath,
+            status: 'failed',
+            errorCode: 'PATH_PARSE_ERROR',
+            errorMessage: '目标路径逃逸出 targetRoot，已拒绝执行',
+            reason: move.reason || '路径越界',
+            ...extractSceneFields(move),
+          });
+          continue;
+        }
+
+        const moveResult = await safeMoveFile(move.sourcePath, expectedResolved, logger);
+
+        if (moveResult.success) {
+          task.completedMoveCount += 1;
+          receipt.summary.successCount += 1;
+          const finalTarget = moveResult.actualTarget || expectedResolved;
+          task.rollbackMap.push({
+            sourcePath: move.sourcePath,
+            targetPath: finalTarget,
+          });
+          receipt.moves.push({
+            fileId: move.fileId,
+            fileName: move.fileName,
+            sourcePath: move.sourcePath,
+            targetPath: finalTarget,
+            status: 'success',
+            targetFolderName: folder.displayName || folder.pathName,
+            reason: move.reason || '执行成功',
+            ...extractSceneFields(move),
+          });
+        } else {
+          task.failedMoveCount += 1;
+          receipt.summary.failedCount += 1;
+          let stillAtOriginalPath = false;
+          try {
+            await fs.access(move.sourcePath);
+            stillAtOriginalPath = true;
+          } catch {}
+
+          receipt.moves.push({
+            fileId: move.fileId,
+            fileName: move.fileName,
+            sourcePath: move.sourcePath,
+            targetPath: expectedResolved,
+            status: 'failed',
+            errorCode: normalizeFailedCode(moveResult.error.errorCode),
+            errorMessage: moveResult.error.userMessage,
+            stillAtOriginalPath,
+            reason: move.reason || '移动失败',
+            ...extractSceneFields(move),
+          });
+        }
+      }
+
+      nextPlannedIndex = batchEnd;
+      processedBatches += 1;
+      await persistCheckpoint();
+    }
+
+    receipt.summary.executedCount = receipt.summary.successCount + receipt.summary.failedCount;
+    receipt.summary.skippedCount = task.skippedMoveCount;
+
+    if (nextPlannedIndex < plannedMoves.length) {
+      task.status = 'paused';
+      task.finishedAt = null;
+      receipt.finishedAt = null;
+      schemaValidator.assertValid('execution-task.schema.json', task, 'ExecutionTask validation failed');
+      schemaValidator.assertValid('execution-receipt.schema.json', receipt, 'ExecutionReceipt validation failed');
+      await persistCheckpoint();
+      return {
+        success: true,
+        paused: true,
+        hasRemaining: true,
+        task,
+        receipt,
+        schemeId: scheme.schemeId,
+      };
+    }
+
+    task.status = 'completed';
+    task.finishedAt = new Date().toISOString();
+    task.batchInfo = {
+      currentBatch: totalBatches,
+      totalBatches,
+    };
+    receipt.finishedAt = task.finishedAt;
+
+    schemaValidator.assertValid('execution-task.schema.json', task, 'ExecutionTask validation failed');
+    schemaValidator.assertValid('execution-receipt.schema.json', receipt, 'ExecutionReceipt validation failed');
+
+    await taskService.saveTask(task);
+    await taskService.clearCheckpoint(taskId);
+
+    try {
+      await saveTask({
+        taskId: task.taskId,
+        targetPath: task.targetPath,
+        schemeId: task.schemeId,
+        stats: {
+          scanned: scannedCount,
+          planned: task.plannedMoveCount,
+          attempted: receipt.summary.executedCount,
+          succeeded: task.completedMoveCount,
+          failed: task.failedMoveCount,
+          skipped: task.skippedMoveCount,
+        },
+        createdFolders: task.createdFolders,
+        movedFiles: receipt.moves.filter((m) => m.status === 'success').map((m) => ({
+          name: m.fileName,
+          source: m.sourcePath,
+          target: m.targetPath,
+        })),
+        skippedFiles: receipt.moves.filter((m) => m.status === 'skipped').map((m) => ({
+          name: m.fileName,
+          source: m.sourcePath,
+          reason: m.reason || '跳过',
+        })),
+        failedFiles: receipt.moves.filter((m) => m.status === 'failed').map((m) => ({
+          name: m.fileName,
+          source: m.sourcePath,
+          target: m.targetPath,
+          reason: m.errorMessage,
+          errorCode: m.errorCode || 'UNKNOWN',
+        })),
+        startedAt: task.createdAt,
+        finishedAt: task.finishedAt,
+        status: 'completed',
+      });
+    } catch (persistError) {
+      await logger.warn('任务记录写入失败，但执行结果有效', {
+        message: persistError.message,
+      });
+    }
+
+    return {
+      success: true,
+      paused: false,
+      hasRemaining: false,
+      task,
+      receipt,
+      schemeId: scheme.schemeId,
+    };
+  } catch (error) {
+    task.status = 'failed';
+    task.finishedAt = new Date().toISOString();
+    receipt.finishedAt = task.finishedAt;
+    receipt.summary.executedCount = receipt.summary.successCount + receipt.summary.failedCount;
+
+    try {
+      schemaValidator.assertValid('execution-task.schema.json', task, 'ExecutionTask validation failed');
+      await taskService.saveTask(task);
+      await persistCheckpoint();
+    } catch (schemaErr) {
+      await logger.error('ExecutionTask schema 校验失败', schemaErr.validationErrors || schemaErr.message);
+    }
+
+    return {
+      success: false,
+      error: error.message,
+      task,
+      receipt,
+      schemeId: scheme.schemeId,
+    };
+  }
+}
+
+async function getExecutionCheckpoint(taskId) {
+  if (!taskId) return null;
+  return taskService.loadCheckpoint(taskId);
+}
+
+async function resumeExecutionTask({ taskId, maxBatchesPerRun = null }) {
+  const checkpoint = await taskService.loadCheckpoint(taskId);
+  if (!checkpoint) {
+    return {
+      success: false,
+      error: '未找到可恢复的 checkpoint',
+    };
+  }
+
+  return executeOrganizationScheme({
+    taskId: checkpoint.taskId,
+    targetPath: checkpoint.targetPath,
+    scheme: checkpoint.scheme,
+    scannedCount: checkpoint.scannedCount,
+    batchSize: checkpoint.batchSize,
+    maxBatchesPerRun,
+    checkpoint,
+  });
+}
+
 module.exports = {
   executeTask,
+  executeOrganizationScheme,
+  resumeExecutionTask,
+  getExecutionCheckpoint,
   getLatestTask,
   getTaskHistory,
   rollbackLatestTask,
+  // 项目保护模式
+  scanWithProjectProtection,
+  detectProjectRoot,
   // 隐藏目录检测与修复
   detectHiddenDirectories,
   generateRepairPreview,

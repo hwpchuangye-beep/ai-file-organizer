@@ -1,0 +1,556 @@
+{
+  "version": 1,
+  "sourceOrder": [
+    "filename",
+    "path_context",
+    "cluster",
+    "content_summary",
+    "preference"
+  ],
+  "categories": [
+    {
+      "name": "简历",
+      "tier": "A",
+      "sceneKind": "semantic",
+      "minEvidenceCount": 2,
+      "minScore": 0.48,
+      "keywords": {
+        "filename": [
+          "简历",
+          "resume",
+          "cv",
+          "求职",
+          "应聘"
+        ],
+        "path_context": [
+          "简历",
+          "招聘",
+          "面试",
+          "求职"
+        ],
+        "content_summary": [
+          "工作经历",
+          "教育经历",
+          "项目经历",
+          "自我评价",
+          "求职意向"
+        ]
+      },
+      "typicalExtensions": [
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".txt",
+        ".md"
+      ]
+    },
+    {
+      "name": "合同",
+      "tier": "A",
+      "sceneKind": "semantic",
+      "minEvidenceCount": 2,
+      "minScore": 0.5,
+      "keywords": {
+        "filename": [
+          "合同",
+          "协议",
+          "签约",
+          "contract",
+          "条款"
+        ],
+        "path_context": [
+          "合同",
+          "客户",
+          "法务",
+          "协议"
+        ],
+        "content_summary": [
+          "甲方",
+          "乙方",
+          "合同编号",
+          "违约",
+          "签署"
+        ]
+      },
+      "typicalExtensions": [
+        ".pdf",
+        ".doc",
+        ".docx"
+      ]
+    },
+    {
+      "name": "发票",
+      "tier": "A",
+      "sceneKind": "semantic",
+      "minEvidenceCount": 2,
+      "minScore": 0.5,
+      "keywords": {
+        "filename": [
+          "发票",
+          "invoice",
+          "专票",
+          "普票",
+          "税票"
+        ],
+        "path_context": [
+          "财务",
+          "发票",
+          "报销"
+        ],
+        "content_summary": [
+          "发票代码",
+          "发票号码",
+          "税额",
+          "价税合计",
+          "开票日期"
+        ]
+      },
+      "typicalExtensions": [
+        ".pdf",
+        ".jpg",
+        ".png"
+      ]
+    },
+    {
+      "name": "报销材料",
+      "tier": "B",
+      "sceneKind": "semantic",
+      "minEvidenceCount": 3,
+      "minScore": 0.64,
+      "keywords": {
+        "filename": [
+          "报销",
+          "报销单",
+          "报销材料",
+          "费用报销",
+          "差旅报销"
+        ],
+        "path_context": [
+          "报销",
+          "财务",
+          "费用"
+        ],
+        "content_summary": [
+          "报销",
+          "费用明细",
+          "审批",
+          "报销金额",
+          "付款信息"
+        ]
+      },
+      "typicalExtensions": [
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".xlsx"
+      ]
+    },
+    {
+      "name": "PRD",
+      "tier": "A",
+      "sceneKind": "semantic",
+      "minEvidenceCount": 2,
+      "minScore": 0.52,
+      "strongKeywords": [
+        "prd",
+        "产品需求文档",
+        "product requirement document"
+      ],
+      "keywords": {
+        "filename": [
+          "prd",
+          "产品需求文档",
+          "需求说明",
+          "需求规格"
+        ],
+        "path_context": [
+          "prd",
+          "产品",
+          "需求"
+        ],
+        "content_summary": [
+          "需求背景",
+          "用户故事",
+          "验收标准",
+          "需求优先级",
+          "业务流程"
+        ]
+      },
+      "typicalExtensions": [
+        ".doc",
+        ".docx",
+        ".md",
+        ".pdf"
+      ]
+    },
+    {
+      "name": "会议纪要",
+      "tier": "A",
+      "sceneKind": "semantic",
+      "minEvidenceCount": 2,
+      "minScore": 0.5,
+      "keywords": {
+        "filename": [
+          "会议纪要",
+          "会议记录",
+          "meeting notes",
+          "纪要",
+          "会议摘要"
+        ],
+        "path_context": [
+          "会议",
+          "纪要",
+          "周会",
+          "项目会议"
+        ],
+        "content_summary": [
+          "会议时间",
+          "参会人员",
+          "决议",
+          "待办",
+          "行动项"
+        ]
+      },
+      "typicalExtensions": [
+        ".doc",
+        ".docx",
+        ".md",
+        ".txt",
+        ".pdf"
+      ]
+    },
+    {
+      "name": "调研报告",
+      "tier": "A",
+      "sceneKind": "semantic",
+      "minEvidenceCount": 2,
+      "minScore": 0.5,
+      "keywords": {
+        "filename": [
+          "调研报告",
+          "研究报告",
+          "报告",
+          "行业研究",
+          "洞察"
+        ],
+        "path_context": [
+          "调研",
+          "研究",
+          "市场"
+        ],
+        "content_summary": [
+          "研究方法",
+          "样本",
+          "结论",
+          "洞察",
+          "建议"
+        ]
+      },
+      "typicalExtensions": [
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".ppt",
+        ".pptx"
+      ]
+    },
+    {
+      "name": "竞品分析",
+      "tier": "B",
+      "sceneKind": "semantic",
+      "minEvidenceCount": 3,
+      "minScore": 0.64,
+      "keywords": {
+        "filename": [
+          "竞品",
+          "竞品分析",
+          "对标分析",
+          "benchmark",
+          "竞对"
+        ],
+        "path_context": [
+          "竞品",
+          "调研",
+          "产品分析"
+        ],
+        "content_summary": [
+          "对比维度",
+          "竞品",
+          "优劣势",
+          "机会点",
+          "结论"
+        ]
+      },
+      "typicalExtensions": [
+        ".pdf",
+        ".doc",
+        ".docx",
+        ".ppt",
+        ".pptx"
+      ]
+    },
+    {
+      "name": "作品集",
+      "tier": "B",
+      "sceneKind": "semantic",
+      "minEvidenceCount": 3,
+      "minScore": 0.64,
+      "keywords": {
+        "filename": [
+          "作品集",
+          "portfolio",
+          "作品",
+          "案例集",
+          "demo reel"
+        ],
+        "path_context": [
+          "作品",
+          "设计",
+          "portfolio"
+        ],
+        "content_summary": [
+          "项目简介",
+          "设计说明",
+          "作品展示",
+          "案例",
+          "成果"
+        ]
+      },
+      "typicalExtensions": [
+        ".pdf",
+        ".ppt",
+        ".pptx",
+        ".fig",
+        ".sketch"
+      ]
+    },
+    {
+      "name": "培训资料",
+      "tier": "B",
+      "sceneKind": "semantic",
+      "minEvidenceCount": 3,
+      "minScore": 0.64,
+      "keywords": {
+        "filename": [
+          "培训",
+          "培训资料",
+          "课件",
+          "training",
+          "讲义"
+        ],
+        "path_context": [
+          "培训",
+          "学习",
+          "课程"
+        ],
+        "content_summary": [
+          "课程目标",
+          "课程大纲",
+          "讲师",
+          "培训安排",
+          "练习"
+        ]
+      },
+      "typicalExtensions": [
+        ".pdf",
+        ".ppt",
+        ".pptx",
+        ".doc",
+        ".docx"
+      ]
+    },
+    {
+      "name": "证件材料",
+      "tier": "B",
+      "sceneKind": "semantic",
+      "minEvidenceCount": 3,
+      "minScore": 0.64,
+      "keywords": {
+        "filename": [
+          "身份证",
+          "护照",
+          "证件",
+          "证书",
+          "资格证"
+        ],
+        "path_context": [
+          "证件",
+          "认证",
+          "资料"
+        ],
+        "content_summary": [
+          "证件号",
+          "签发",
+          "有效期",
+          "姓名",
+          "证书编号"
+        ]
+      },
+      "typicalExtensions": [
+        ".pdf",
+        ".jpg",
+        ".png"
+      ]
+    },
+    {
+      "name": "申请材料",
+      "tier": "B",
+      "sceneKind": "semantic",
+      "minEvidenceCount": 3,
+      "minScore": 0.64,
+      "keywords": {
+        "filename": [
+          "申请",
+          "申请材料",
+          "申请书",
+          "application",
+          "报名材料"
+        ],
+        "path_context": [
+          "申请",
+          "资料提交",
+          "流程"
+        ],
+        "content_summary": [
+          "申请人",
+          "申请事项",
+          "提交材料",
+          "审批",
+          "受理"
+        ]
+      },
+      "typicalExtensions": [
+        ".pdf",
+        ".doc",
+        ".docx"
+      ]
+    },
+    {
+      "name": "报价单",
+      "tier": "B",
+      "sceneKind": "semantic",
+      "minEvidenceCount": 3,
+      "minScore": 0.64,
+      "keywords": {
+        "filename": [
+          "报价单",
+          "报价",
+          "quotation",
+          "价格清单",
+          "报价方案"
+        ],
+        "path_context": [
+          "报价",
+          "商务",
+          "客户"
+        ],
+        "content_summary": [
+          "单价",
+          "总价",
+          "报价有效期",
+          "付款方式",
+          "服务内容"
+        ]
+      },
+      "typicalExtensions": [
+        ".xlsx",
+        ".pdf",
+        ".doc",
+        ".docx"
+      ]
+    },
+    {
+      "name": "需求文档",
+      "tier": "B",
+      "sceneKind": "semantic",
+      "minEvidenceCount": 3,
+      "minScore": 0.64,
+      "keywords": {
+        "filename": [
+          "需求文档",
+          "需求",
+          "需求说明",
+          "需求清单",
+          "功能需求"
+        ],
+        "path_context": [
+          "需求",
+          "产品",
+          "功能"
+        ],
+        "content_summary": [
+          "需求描述",
+          "需求列表",
+          "业务需求",
+          "验收",
+          "优先级"
+        ]
+      },
+      "typicalExtensions": [
+        ".doc",
+        ".docx",
+        ".md",
+        ".pdf"
+      ]
+    },
+    {
+      "name": "软件安装包",
+      "tier": "A",
+      "sceneKind": "special_package",
+      "minEvidenceCount": 1,
+      "minScore": 0.45,
+      "keywords": {
+        "filename": [
+          "安装",
+          "installer",
+          "setup",
+          "install",
+          "安装包"
+        ],
+        "path_context": [
+          "安装包",
+          "installer",
+          "软件"
+        ],
+        "content_summary": []
+      },
+      "typicalExtensions": [
+        ".dmg",
+        ".pkg",
+        ".exe",
+        ".msi",
+        ".apk",
+        ".ipa"
+      ]
+    },
+    {
+      "name": "压缩包",
+      "tier": "A",
+      "sceneKind": "special_package",
+      "minEvidenceCount": 1,
+      "minScore": 0.45,
+      "keywords": {
+        "filename": [
+          "压缩包",
+          "zip",
+          "rar",
+          "archive",
+          "打包"
+        ],
+        "path_context": [
+          "压缩包",
+          "archive",
+          "备份"
+        ],
+        "content_summary": []
+      },
+      "typicalExtensions": [
+        ".zip",
+        ".rar",
+        ".7z",
+        ".tar",
+        ".gz"
+      ]
+    }
+  ]
+}

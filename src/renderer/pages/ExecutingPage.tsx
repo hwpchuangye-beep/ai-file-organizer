@@ -1,68 +1,94 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 
 export default function ExecutingPage() {
   const navigate = useNavigate()
-  const { adjustedScheme, scanResult, setCurrentTask, addToHistory } = useApp()
+  const {
+    approvedSchemeId,
+    setCurrentTask,
+    setCurrentReceipt,
+    setVerificationReport,
+    addToHistory,
+  } = useApp()
   const [progress, setProgress] = useState(0)
   const [step, setStep] = useState('准备中...')
   const [error, setError] = useState<string | null>(null)
+  const runningRef = useRef(false)
+  const executedSchemeRef = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!adjustedScheme || !scanResult) {
-      navigate('/')
+    if (!approvedSchemeId) {
+      navigate('/execute-confirm')
       return
     }
 
+    if (runningRef.current && executedSchemeRef.current === approvedSchemeId) {
+      return
+    }
+    runningRef.current = true
+    executedSchemeRef.current = approvedSchemeId
+    let cancelled = false
+
     const execute = async () => {
-      setStep('正在准备执行任务...')
-      setProgress(10)
-
-      try {
-        // 构建任务数据
-        const taskPayload = {
-          taskId: Date.now().toString(),
-          targetPath: scanResult.targetPath,
-          scheme: adjustedScheme,
-          scannedTotal: scanResult.totalFiles,
-        }
-
-        setStep('正在创建文件夹...')
-        setProgress(30)
-
-        // 调用真实的执行服务
-        if (!window.electronAPI) {
-          setError('Electron API 未初始化')
-          setProgress(0)
-          return
-        }
-        const result = await window.electronAPI.executeTask(taskPayload)
-
-        setProgress(80)
-        setStep('正在记录执行结果...')
-
-        if (result.success) {
-          setProgress(100)
-          setCurrentTask(result.result)
-          addToHistory(result.result)
-          
-          // 延迟后跳转到结果页
-          setTimeout(() => {
-            navigate('/result')
-          }, 500)
-        } else {
-          setError(result.error || '执行失败')
-          setProgress(0)
-        }
-      } catch (err) {
-        setError('执行过程中发生错误')
-        setProgress(0)
+      if (!window.electronAPI) {
+        if (!cancelled) setError('Electron API 未初始化')
+        return
       }
+
+      if (!cancelled) {
+        setStep('正在执行通过审批的整理计划...')
+        setProgress(20)
+      }
+
+      const executeResult = await window.electronAPI.executeApprovedScheme({
+        schemeId: approvedSchemeId,
+      })
+
+      if (!executeResult.success || !executeResult.task) {
+        if (!cancelled) {
+          setError(executeResult.error || '执行失败')
+          setProgress(0)
+        }
+        return
+      }
+
+      if (!cancelled) {
+        setCurrentTask(executeResult.task)
+        setCurrentReceipt(executeResult.receipt || null)
+        addToHistory(executeResult.task)
+        setStep('正在逐文件验证落盘结果...')
+        setProgress(75)
+      }
+
+      const verifyResult = await window.electronAPI.verifyExecutionTask({
+        taskId: executeResult.task.taskId,
+      })
+
+      if (!verifyResult.success || !verifyResult.report) {
+        if (!cancelled) {
+          setError(verifyResult.error || '验证失败')
+          setProgress(0)
+        }
+        return
+      }
+
+      if (!cancelled) {
+        setVerificationReport(verifyResult.report)
+        setProgress(100)
+        setStep('执行与验证完成')
+      }
+
+      setTimeout(() => {
+        if (!cancelled) navigate('/result')
+      }, 400)
     }
 
     execute()
-  }, [adjustedScheme, scanResult])
+    return () => {
+      cancelled = true
+    }
+  }, [approvedSchemeId, navigate, addToHistory, setCurrentReceipt, setCurrentTask, setVerificationReport])
 
   if (error) {
     return (
@@ -151,7 +177,7 @@ export default function ExecutingPage() {
           />
         </div>
         <p style={{ fontSize: '13px', color: '#6e6e73', marginTop: '12px' }}>
-          请勿关闭应用，正在操作真实文件...
+          执行器与验证器正在处理真实文件
         </p>
       </div>
     </div>

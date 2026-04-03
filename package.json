@@ -8,7 +8,11 @@
     "dev:electron": "npm run build:main && echo '[Main] Starting Electron...' && VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron src/main/main.cjs",
     "dev": "concurrently --kill-others --names VITE,ELECTRON --prefix-colors cyan,magenta --handle-input \"npm run dev:vite\" \"sleep 5 && npm run dev:electron\"",
     "build": "vite build",
-    "build:main": "mkdir -p dist/main/services && cp src/main/*.cjs dist/main/ && cp src/main/services/*.cjs dist/main/services/ && echo 'Main build complete' && ls -la dist/main/ && ls -la dist/main/services/",
+    "build:main": "mkdir -p dist/main/services dist/shared/schemas dist/shared/config && cp src/main/*.cjs dist/main/ && cp src/main/services/*.cjs dist/main/services/ && cp src/shared/schemas/*.json dist/shared/schemas/ && cp src/shared/config/*.json dist/shared/config/ && echo 'Main build complete' && ls -la dist/main/ && ls -la dist/main/services/ && ls -la dist/shared/schemas/ && ls -la dist/shared/config/",
+    "acceptance:phase1": "node scripts/phase1-acceptance.cjs",
+    "smoke:phase2": "node scripts/phase2-smoke.cjs",
+    "regression": "npm run acceptance:phase1 && npm run smoke:phase2",
+    "test": "npm run regression",
     "electron:dev": "npm run build && electron .",
     "electron:build": "npm run build && npm run build:main && electron-builder",
     "dist": "npm run build && npm run build:main && electron-builder",
@@ -36,6 +40,8 @@
     "wait-on": "^7.2.0"
   },
   "dependencies": {
+    "ajv": "^8.18.0",
+    "ajv-formats": "^3.0.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.20.0"

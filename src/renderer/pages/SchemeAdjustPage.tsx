@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ArrowRight, ChevronLeft, Folder } from '../components/Icons'
 
 export default function SchemeAdjustPage() {
@@ -8,16 +8,22 @@ export default function SchemeAdjustPage() {
   const { selectedScheme, setAdjustedScheme } = useApp()
   const [excludedFiles, setExcludedFiles] = useState<string[]>([])
 
-  if (!selectedScheme) {
-    navigate('/scheme-recommend')
-    return null
-  }
+  useEffect(() => {
+    if (!selectedScheme) {
+      navigate('/scheme-recommend', { replace: true })
+    }
+  }, [selectedScheme, navigate])
+
+  if (!selectedScheme) return null
 
   const handleContinue = () => {
     const adjusted = {
       ...selectedScheme,
-      plannedMoves: selectedScheme.plannedMoves.filter(
-        m => !excludedFiles.includes(m.file.path)
+      moves: selectedScheme.moves.filter(
+        (m) => !excludedFiles.includes(m.sourcePath)
+      ),
+      uncertainFiles: selectedScheme.uncertainFiles.filter(
+        (f) => !excludedFiles.includes(f.sourcePath),
       ),
     }
     setAdjustedScheme(adjusted)
@@ -32,10 +38,10 @@ export default function SchemeAdjustPage() {
       <div className="card" style={{ marginBottom: '24px' }}>
         <h3 style={{ fontSize: '17px', fontWeight: 600, marginBottom: '16px' }}>建议的文件夹结构</h3>
         <div style={{ padding: '16px', background: '#f5f5f7', borderRadius: '8px' }}>
-          {selectedScheme.suggestedFolders.map(folder => (
-            <div key={folder} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0' }}>
+          {selectedScheme.folders.map((folder) => (
+            <div key={folder.folderId} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 0' }}>
               <Folder size={18} color="#007aff" />
-              <span>{folder}</span>
+              <span>{folder.displayName}</span>
             </div>
           ))}
         </div>
@@ -43,10 +49,10 @@ export default function SchemeAdjustPage() {
 
       <div className="card">
         <h3 style={{ fontSize: '17px', fontWeight: 600, marginBottom: '16px' }}>
-          预计移动的文件 ({selectedScheme.plannedMoves.length})
+          预计移动的文件 ({selectedScheme.moves.length})
         </h3>
         <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
-          {selectedScheme.plannedMoves.map((move, index) => (
+          {selectedScheme.moves.map((move, index) => (
             <div
               key={index}
               style={{
@@ -54,27 +60,27 @@ export default function SchemeAdjustPage() {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 padding: '12px',
-                background: excludedFiles.includes(move.file.path) ? '#f5f5f7' : 'transparent',
+                background: excludedFiles.includes(move.sourcePath) ? '#f5f5f7' : 'transparent',
                 borderRadius: '8px',
                 marginBottom: '8px',
-                opacity: excludedFiles.includes(move.file.path) ? 0.5 : 1,
+                opacity: excludedFiles.includes(move.sourcePath) ? 0.5 : 1,
               }}
             >
               <div>
-                <div style={{ fontSize: '14px', fontWeight: 500 }}>{move.file.name}</div>
-                <div style={{ fontSize: '12px', color: '#6e6e73' }}>→ {move.targetFolder}</div>
+                <div style={{ fontSize: '14px', fontWeight: 500 }}>{move.fileName}</div>
+                <div style={{ fontSize: '12px', color: '#6e6e73' }}>→ {move.targetPath}</div>
               </div>
               <button
                 onClick={() => {
-                  if (excludedFiles.includes(move.file.path)) {
-                    setExcludedFiles(excludedFiles.filter(p => p !== move.file.path))
+                  if (excludedFiles.includes(move.sourcePath)) {
+                    setExcludedFiles(excludedFiles.filter(p => p !== move.sourcePath))
                   } else {
-                    setExcludedFiles([...excludedFiles, move.file.path])
+                    setExcludedFiles([...excludedFiles, move.sourcePath])
                   }
                 }}
                 style={{
                   padding: '6px 12px',
-                  background: excludedFiles.includes(move.file.path) ? '#34c759' : '#ff3b30',
+                  background: excludedFiles.includes(move.sourcePath) ? '#34c759' : '#ff3b30',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
@@ -82,7 +88,7 @@ export default function SchemeAdjustPage() {
                   cursor: 'pointer',
                 }}
               >
-                {excludedFiles.includes(move.file.path) ? '恢复' : '排除'}
+                {excludedFiles.includes(move.sourcePath) ? '恢复' : '排除'}
               </button>
             </div>
           ))}

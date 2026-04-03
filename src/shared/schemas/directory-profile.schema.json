@@ -1,0 +1,260 @@
+{
+  "$id": "directory-profile.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DirectoryProfile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "profileId",
+    "target",
+    "summary",
+    "scanStats",
+    "typeDistribution",
+    "businessSignals",
+    "clusters",
+    "protectedItems"
+  ],
+  "properties": {
+    "profileId": {
+      "type": "string"
+    },
+    "target": {
+      "$ref": "directory-target.schema.json"
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "directoryType",
+        "estimatedComplexity",
+        "recommendedStrategyHint"
+      ],
+      "properties": {
+        "directoryType": {
+          "type": "string",
+          "enum": [
+            "normal_heap",
+            "download_heap",
+            "desktop_heap",
+            "project_container",
+            "project_root",
+            "mixed"
+          ]
+        },
+        "estimatedComplexity": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "very_high"]
+        },
+        "recommendedStrategyHint": {
+          "type": "string",
+          "enum": [
+            "business",
+            "category",
+            "business_category",
+            "protect_only",
+            "manual_first"
+          ]
+        },
+        "note": {
+          "type": "string"
+        }
+      }
+    },
+    "scanStats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "totalFiles",
+        "topLevelFiles",
+        "subDirectories",
+        "estimatedMovableFiles"
+      ],
+      "properties": {
+        "totalFiles": { "type": "integer", "minimum": 0 },
+        "topLevelFiles": { "type": "integer", "minimum": 0 },
+        "subDirectories": { "type": "integer", "minimum": 0 },
+        "estimatedMovableFiles": { "type": "integer", "minimum": 0 },
+        "largeTaskModeSuggested": { "type": "boolean", "default": false }
+      }
+    },
+    "typeDistribution": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "count"],
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "table",
+              "document",
+              "image",
+              "presentation",
+              "mindmap",
+              "archive",
+              "installer",
+              "audio",
+              "video",
+              "code",
+              "other"
+            ]
+          },
+          "count": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "businessSignals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "score"],
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": ["运营", "产品", "客户", "调研", "财务", "学习", "项目", "设计"]
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "matchedKeywords": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "sceneDistribution": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "count"],
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "简历",
+              "合同",
+              "发票",
+              "报销材料",
+              "PRD",
+              "会议纪要",
+              "调研报告",
+              "竞品分析",
+              "作品集",
+              "培训资料",
+              "证件材料",
+              "申请材料",
+              "报价单",
+              "需求文档",
+              "软件安装包",
+              "压缩包"
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "sceneSignals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "score"],
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "简历",
+              "合同",
+              "发票",
+              "报销材料",
+              "PRD",
+              "会议纪要",
+              "调研报告",
+              "竞品分析",
+              "作品集",
+              "培训资料",
+              "证件材料",
+              "申请材料",
+              "报价单",
+              "需求文档",
+              "软件安装包",
+              "压缩包"
+            ]
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    },
+    "clusters": {
+      "type": "array",
+      "description": "相似命名或同批次文件簇",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["clusterId", "label", "fileCount"],
+        "properties": {
+          "clusterId": { "type": "string" },
+          "label": { "type": "string" },
+          "fileCount": { "type": "integer", "minimum": 1 },
+          "sampleFiles": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "protectedItems": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ProtectedItem" }
+    },
+    "hiddenDirectoryCandidates": {
+      "type": "array",
+      "description": "历史隐藏目录候选，如 .xlsx",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "path"],
+        "properties": {
+          "name": { "type": "string" },
+          "path": { "type": "string" },
+          "suggestedVisibleName": { "type": "string" }
+        }
+      }
+    },
+    "preferenceHits": {
+      "type": "array",
+      "description": "命中的历史偏好",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "ProtectedItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "reason", "protectionType"],
+      "properties": {
+        "path": { "type": "string" },
+        "reason": { "type": "string" },
+        "protectionType": {
+          "type": "string",
+          "enum": ["project_root", "workspace", "ignored", "user_protected"]
+        }
+      }
+    }
+  }
+}
